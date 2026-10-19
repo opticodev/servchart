@@ -1,4 +1,11 @@
 {
+  "host_connections": [
+    {
+      "ip": "10.20.0.4",
+      "port": 2049,
+      "count": 2
+    }
+  ],
   "schema": 1,
   "agent_version": "0.1.0",
   "collected_at": "2026-10-19T12:00:00+00:00",
@@ -9,7 +16,11 @@
     "arch": "x86_64",
     "cpus": 8,
     "memory_bytes": 34359738368,
-    "docker_version": "27.3.1"
+    "docker_version": "27.3.1",
+    "ips": [
+      "10.20.0.3"
+    ],
+    "observe": "on"
   },
   "containers": [
     {
@@ -27,6 +38,10 @@
         "working_dir": "/opt/stacks/nextcloud",
         "config_files": [
           "/opt/stacks/nextcloud/compose.yml"
+        ],
+        "depends_on": [
+          "db",
+          "redis"
         ]
       },
       "labels": {
@@ -59,6 +74,18 @@
           "destination": "/var/www/html",
           "rw": true
         }
+      ],
+      "connections": [
+        {
+          "ip": "172.20.0.33",
+          "port": 5432,
+          "count": 8
+        },
+        {
+          "ip": "172.20.0.143",
+          "port": 6379,
+          "count": 4
+        }
       ]
     },
     {
@@ -76,7 +103,8 @@
         "working_dir": "/opt/stacks/nextcloud",
         "config_files": [
           "/opt/stacks/nextcloud/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "nextcloud",
@@ -116,7 +144,8 @@
         "working_dir": "/opt/stacks/nextcloud",
         "config_files": [
           "/opt/stacks/nextcloud/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "nextcloud",
@@ -149,6 +178,9 @@
         "working_dir": "/opt/stacks/git",
         "config_files": [
           "/opt/stacks/git/compose.yml"
+        ],
+        "depends_on": [
+          "db"
         ]
       },
       "labels": {
@@ -182,7 +214,14 @@
           ]
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "connections": [
+        {
+          "ip": "172.20.0.183",
+          "port": 5432,
+          "count": 5
+        }
+      ]
     },
     {
       "id": "000071612315",
@@ -199,7 +238,8 @@
         "working_dir": "/opt/stacks/git",
         "config_files": [
           "/opt/stacks/git/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "git",
@@ -232,6 +272,9 @@
         "working_dir": "/opt/stacks/git",
         "config_files": [
           "/opt/stacks/git/compose.yml"
+        ],
+        "depends_on": [
+          "server"
         ]
       },
       "labels": {
@@ -265,7 +308,8 @@
         "working_dir": "/opt/stacks/vault",
         "config_files": [
           "/opt/stacks/vault/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "vault",
@@ -305,7 +349,8 @@
         "project": null,
         "service": null,
         "working_dir": null,
-        "config_files": []
+        "config_files": [],
+        "depends_on": []
       },
       "labels": {},
       "networks": [
@@ -340,7 +385,8 @@
         "project": null,
         "service": null,
         "working_dir": null,
-        "config_files": []
+        "config_files": [],
+        "depends_on": []
       },
       "labels": {},
       "networks": [

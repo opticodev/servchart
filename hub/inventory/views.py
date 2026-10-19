@@ -10,6 +10,7 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 
+from .audit import audit
 from .authentication import AgentPrincipal, HostTokenAuthentication
 from .graph import build_graph, host_summary
 from .models import Host
@@ -57,6 +58,8 @@ def report(request):
         cleaned = clean_report(request.data)
     except ReportError as exc:
         return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    # where the report came from: lets other hosts' connections to this address resolve to it
+    cleaned["seen_from"] = request.META.get("REMOTE_ADDR")
     store_report(request.auth, cleaned)
     return Response({"ok": True, "host": request.auth.name, "containers": len(cleaned["containers"])})
 
@@ -69,8 +72,9 @@ def graph(request):
 def _install_command(request, token: str) -> str:
     hub = settings.SERVCHART_PUBLIC_URL or request.build_absolute_uri("/").rstrip("/")
     return (
-        "docker run -d --name servchart-agent --restart unless-stopped \\\n"
+        "docker run -d --name servchart-agent --restart unless-stopped --pid host \\\n"
         "  -v /var/run/docker.sock:/var/run/docker.sock:ro \\\n"
+        "  -e SERVCHART_OBSERVE_CONNECTIONS=1 \\\n"
         f"  -e SERVCHART_HUB={hub} \\\n"
         f"  -e SERVCHART_TOKEN={token} \\\n"
         f"  {settings.SERVCHART_AGENT_IMAGE}"
@@ -89,6 +93,7 @@ def hosts(request):
     if Host.objects.filter(name=name).exists():
         return Response({"error": f"A host named {name!r} already exists."}, status=status.HTTP_400_BAD_REQUEST)
     host, token = Host.create_with_token(name)
+    audit(request, "host.create", host.name)
     return Response(
         {**host_summary(host), "token": token, "install_command": _install_command(request, token)},
         status=status.HTTP_201_CREATED,
@@ -104,9 +109,12 @@ def rotate_token(request, pk: int):
     except Host.DoesNotExist:
         return Response({"error": "No such agent host."}, status=status.HTTP_404_NOT_FOUND)
     token = host.rotate_token()
+    audit(request, "host.rotate_token", host.name)
     return Response({"token": token, "install_command": _install_command(request, token)})
 
 
 @api_view(["GET"])
 def me(request):
-    return Response({"username": request.user.get_username(), "is_staff": request.user.is_staff})
+    from .settings_api import me_payload
+
+    return Response(me_payload(request))

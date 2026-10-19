@@ -52,19 +52,23 @@ class DockerClient:
         host, port = target
         return http.client.HTTPConnection(host, port, timeout=self.timeout)
 
-    def get(self, path: str):
+    def get_raw(self, path: str, limit: int | None = None) -> bytes:
+        """GET returning raw bytes (read at most `limit` bytes)."""
         conn = self._connection()
         try:
             conn.request("GET", path, headers={"Accept": "application/json"})
             resp = conn.getresponse()
-            body = resp.read()
+            body = resp.read(limit) if limit else resp.read()
         except OSError as exc:
             raise DockerError(f"Cannot reach Docker at {self.docker_host}: {exc}") from exc
         finally:
             conn.close()
         if resp.status >= 400:
             raise DockerError(f"Docker API GET {path} -> HTTP {resp.status}: {body[:200]!r}")
-        return json.loads(body or b"null")
+        return body
+
+    def get(self, path: str):
+        return json.loads(self.get_raw(path) or b"null")
 
     # Convenience wrappers -------------------------------------------------
     def info(self):
@@ -81,3 +85,9 @@ class DockerClient:
 
     def networks(self):
         return self.get("/networks")
+
+    def logs(self, container: str, tail: int = 200, since: int | None = None, limit: int = 2 * 1024 * 1024) -> bytes:
+        q = f"stdout=1&stderr=1&timestamps=1&tail={int(tail)}"
+        if since:
+            q += f"&since={int(since)}"
+        return self.get_raw(f"/containers/{quote(container)}/logs?{q}", limit=limit)

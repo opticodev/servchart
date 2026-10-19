@@ -16,6 +16,11 @@ else
   echo "Local collector disabled (no Docker socket mounted)."
 fi
 
+# Scheduled report emails (idle unless a schedule is set in Settings -> Reports).
+if [ "${SERVCHART_REPORT_SCHEDULER:-1}" = "1" ]; then
+  python manage.py report_scheduler &
+fi
+
 exec gunicorn servchart.wsgi:application \
   --bind "0.0.0.0:${SERVCHART_PORT:-8484}" \
   --workers "${SERVCHART_WORKERS:-2}" \

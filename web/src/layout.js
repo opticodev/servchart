@@ -1,13 +1,16 @@
 // Turns the hub's graph (hosts -> networks / stacks -> containers) into positioned React Flow nodes.
 //
 //   ┌ host ─────────────────────────────────────────────┐
-//   │ (network) (network) (network)                     │
+//   │ (shared network) (bridge)                         │
 //   │ ┌ stack: nextcloud ──────┐ ┌ stack: git ────────┐ │
+//   │ │ (nextcloud_default)    │ │ (git_default)      │ │
 //   │ │ [app]  [db]            │ │ [server] [db]      │ │
 //   │ │ [redis]                │ │ [runner]           │ │
 //   │ └────────────────────────┘ └────────────────────┘ │
 //   └───────────────────────────────────────────────────┘
 //
+// A network used by a single stack is drawn inside that stack, so its lines stay short;
+// only networks shared between stacks (or standalone containers) sit in the host's top row.
 // With grouping off, a host's containers sit in one plain grid (no stack boxes).
 
 export const SIZES = {
@@ -78,7 +81,14 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
     const ctrIds = new Set(b.containers.map((c) => c.id));
     const usedNets = new Set();
     for (const e of graph.edges) if (ctrIds.has(e.source) && e.kind === "network") usedNets.add(e.target);
-    const nets = b.networks.filter((n) => usedNets.has(n.id)).sort((a, z) => a.data.name.localeCompare(z.data.name));
+    const allNets = b.networks.filter((n) => usedNets.has(n.id)).sort((a, z) => a.data.name.localeCompare(z.data.name));
+    const localStackOf = (n) => (groupStacks && (n.data.stacks || []).length === 1 && b.stacks.has(n.data.stacks[0]) ? n.data.stacks[0] : null);
+    const nets = allNets.filter((n) => !localStackOf(n)); // shared ones, in the host's top row
+    const localNets = new Map(); // stack id -> its own networks
+    for (const n of allNets) {
+      const sid = localStackOf(n);
+      if (sid) localNets.set(sid, [...(localNets.get(sid) || []), n]);
+    }
 
     // groups: one per stack (or a single unboxed group when grouping is off)
     let groups;
@@ -98,8 +108,13 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
       g.cols = g.node ? stackCols(n) : Math.max(3, Math.min(6, Math.ceil(Math.sqrt(n * 1.6))));
       g.rows = Math.max(1, Math.ceil(n / g.cols));
       const innerPad = g.node ? stackPad : 0;
-      const top = g.node ? stackHeader : 0;
-      g.w = g.cols * C.w + (g.cols - 1) * gap + innerPad * 2;
+      g.nets = g.node ? localNets.get(g.node.id) || [] : [];
+      const innerW = g.cols * C.w + (g.cols - 1) * gap;
+      g.netCols = Math.max(1, Math.floor((innerW + gap) / (N.w + gap)));
+      const netRows = Math.ceil(g.nets.length / g.netCols);
+      g.netH = netRows ? netRows * (N.h + 8) - 8 + 12 : 0;
+      const top = (g.node ? stackHeader : 0) + g.netH;
+      g.w = innerW + innerPad * 2;
       g.h = top + g.rows * C.h + (g.rows - 1) * gap + innerPad;
     }
 
@@ -169,8 +184,20 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
         });
         visible.add(g.node.id);
         parentId = g.node.id;
+        g.nets.forEach((n, i) => {
+          rfNodes.push({
+            id: n.id,
+            type: "network",
+            parentId,
+            extent: "parent",
+            position: { x: stackPad + (i % g.netCols) * (N.w + gap), y: stackHeader + Math.floor(i / g.netCols) * (N.h + 8) },
+            data: { ...n.data, local: true },
+            style: { width: N.w, height: N.h },
+          });
+          visible.add(n.id);
+        });
         ox = stackPad;
-        oy = stackHeader;
+        oy = stackHeader + g.netH;
       }
       g.members.forEach((m, i) => {
         rfNodes.push({
@@ -193,6 +220,27 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
   const rfEdges = graph.edges
     .filter((e) => visible.has(e.source) && visible.has(e.target))
     .map((e) => ({ id: e.id, source: e.source, target: e.target, type: "default", className: `edge-${e.kind}`, data: e }));
-
   return { nodes: rfNodes, edges: rfEdges };
+}
+
+export const LINK_KINDS = {
+  structure: new Set(["network", "host-network", "shared-netns"]), // what a container is attached to
+  relation: new Set(["depends", "flow"]), // how containers talk
+};
+
+// Which edges to draw. mode: "smart" (relations always, structure only around the selection),
+// "all", or "selected" (only edges touching the selection).
+export function filterEdges(edges, nodes, mode, selectedId) {
+  const parentOf = new Map(nodes.map((n) => [n.id, n.parentId]));
+  const touches = (id) => {
+    if (!selectedId) return false;
+    for (let cur = id; cur; cur = parentOf.get(cur)) if (cur === selectedId) return true; // inside a selected stack/host
+    return false;
+  };
+  return edges.filter((e) => {
+    const related = touches(e.source) || touches(e.target);
+    if (mode === "all") return true;
+    if (mode === "selected") return related;
+    return LINK_KINDS.relation.has(e.data.kind) || related;
+  });
 }

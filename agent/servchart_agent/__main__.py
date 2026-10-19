@@ -18,35 +18,44 @@ import time
 import urllib.error
 import urllib.request
 
-from . import __version__
+from . import __version__, commands
 from .collect import collect
 from .docker_api import DockerClient, DockerError
 
 log = logging.getLogger("servchart.agent")
 
 
-def push(snapshot: dict, hub: str, token: str, ca_file: str | None = None, insecure: bool = False) -> None:
-    url = hub.rstrip("/") + "/api/v1/report"
-    data = json.dumps(snapshot).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-            "User-Agent": f"servchart-agent/{__version__}",
-        },
-    )
+def hub_request(hub: str, token: str, ca_file: str | None = None, insecure: bool = False):
+    """Returns request(method, path, body) -> parsed JSON, bound to this hub and token."""
     ctx = None
-    if url.startswith("https://"):
+    if hub.startswith("https://"):
         ctx = ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context()
         if insecure:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
-    with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
-        if resp.status >= 300:
-            raise RuntimeError(f"hub answered HTTP {resp.status}")
+
+    def request(method: str, path: str, body):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            hub.rstrip("/") + path,
+            data=data,
+            method=method,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+                "User-Agent": f"servchart-agent/{__version__}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else None
+
+    return request
+
+
+def push(snapshot: dict, hub: str, token: str, ca_file: str | None = None, insecure: bool = False) -> None:
+    hub_request(hub, token, ca_file, insecure)("POST", "/api/v1/report", snapshot)
 
 
 def parse_args(argv=None):
@@ -83,6 +92,8 @@ def main(argv=None) -> int:
         return 2
 
     log.info("servchart-agent %s reporting to %s every %ss", __version__, args.hub, args.interval)
+    if not args.once:
+        commands.start(client, hub_request(args.hub, args.token, args.ca_file, args.insecure))
     backoff = 0
     while True:
         try:

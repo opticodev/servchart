@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow } from "@xyflow/react";
+import { Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow } from "@xyflow/react";
 import { api } from "./api.js";
-import { layoutGraph } from "./layout.js";
+import { filterEdges, layoutGraph } from "./layout.js";
 import { nodeTypes } from "./components/nodes.jsx";
 import DetailsPanel from "./components/DetailsPanel.jsx";
 import AddHostDialog from "./components/AddHostDialog.jsx";
+import Legend from "./components/Legend.jsx";
+import LogViewer from "./components/LogViewer.jsx";
+import Settings from "./components/Settings.jsx";
 
 const REFRESH_MS = 15000;
 
@@ -27,6 +30,29 @@ function useStored(key, initial) {
   return [value, setValue];
 }
 
+// Name, accent color, logo and favicon from Settings -> Appearance.
+function applyBranding(b) {
+  if (!b) return;
+  document.title = b.app_name || "ServChart";
+  const root = document.documentElement.style;
+  if (b.accent_color) root.setProperty("--accent", b.accent_color);
+  else root.removeProperty("--accent");
+  if (b.favicon_url) {
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = b.favicon_url;
+  }
+}
+
+function closeMenu(e) {
+  const d = e.currentTarget.closest("details");
+  if (d) d.open = false;
+}
+
 function MapView() {
   const [graph, setGraph] = useState(null);
   const [me, setMe] = useState(null);
@@ -35,8 +61,21 @@ function MapView() {
   const [hostFilter, setHostFilter] = useStored("servchart.hostFilter", "all");
   const [hideStopped, setHideStopped] = useStored("servchart.hideStopped", false);
   const [groupStacks, setGroupStacks] = useStored("servchart.groupStacks", true);
+  const [linkMode, setLinkMode] = useStored("servchart.links", "smart");
   const [selectedId, setSelectedId] = useState(null);
   const [dialog, setDialog] = useState(null); // {mode:'add'} | {mode:'rotate', host}
+  const [view, setView] = useState(() => (window.location.hash === "#settings" ? "settings" : "map"));
+  const [settingsRev, setSettingsRev] = useState(0); // remounts Settings after the add-host dialog
+  const [branding, setBranding] = useState(null);
+  const [logs, setLogs] = useState(null); // {hostPk, hostName, container}
+  const loadBranding = useCallback(() => api.branding().then((b) => { setBranding(b); applyBranding(b); }).catch(() => {}), []);
+  useEffect(() => {
+    loadBranding();
+  }, [loadBranding]);
+  useEffect(() => {
+    const want = view === "settings" ? "#settings" : "";
+    if (window.location.hash !== want) window.history.replaceState(null, "", window.location.pathname + want);
+  }, [view]);
   const [nodes, setNodes] = useState([]);
   const dragged = useRef({}); // node id -> position the user dragged it to
   const fitted = useRef(false);
@@ -82,11 +121,35 @@ function MapView() {
   }, []);
 
   const edges = useMemo(() => {
-    if (!selectedId) return laid.edges;
-    return laid.edges.map((e) => (e.source === selectedId || e.target === selectedId ? { ...e, animated: true, className: `${e.className} is-active` } : e));
-  }, [laid.edges, selectedId]);
+    const shown = filterEdges(laid.edges, nodes.length ? nodes : laid.nodes, linkMode, selectedId);
+    return shown.map((e) => {
+      const d = e.data;
+      const active = selectedId && (e.source === selectedId || e.target === selectedId);
+      const cls = `${e.className}${d.cross_host ? " edge-cross" : ""}${active ? " is-active" : ""}`;
+      if (d.kind === "flow") {
+        return {
+          ...e,
+          className: cls,
+          sourceHandle: "out",
+          targetHandle: "in",
+          animated: true,
+          label: d.ports.map((p) => ":" + p).join(" "),
+          labelShowBg: true,
+          labelBgPadding: [4, 2],
+          labelBgBorderRadius: 4,
+          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+          zIndex: 5,
+        };
+      }
+      if (d.kind === "depends") {
+        return { ...e, className: cls, sourceHandle: "out", targetHandle: "in", markerEnd: { type: MarkerType.Arrow, width: 14, height: 14 }, zIndex: 4 };
+      }
+      return { ...e, className: cls, animated: !!active };
+    });
+  }, [laid, nodes, linkMode, selectedId]);
 
   const selectedNode = useMemo(() => graph?.nodes.find((n) => n.id === selectedId) || null, [graph, selectedId]);
+  const selectedHost = useMemo(() => (selectedNode ? graph.nodes.find((n) => n.id === selectedNode.host)?.data || null : null), [graph, selectedNode]);
   const hosts = graph?.hosts || [];
   const totals = hosts.reduce((a, h) => ({ c: a.c + h.counts.containers, r: a.r + h.counts.running, s: a.s + (h.counts.stacks || 0) }), { c: 0, r: 0, s: 0 });
 
@@ -94,10 +157,14 @@ function MapView() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="logo" aria-hidden>
-            ◆
-          </span>
-          ServChart
+          {branding?.logo_url ? (
+            <img src={branding.logo_url} alt="" />
+          ) : (
+            <span className="logo" aria-hidden>
+              ◆
+            </span>
+          )}
+          {branding?.app_name || "ServChart"}
         </div>
         <div className="stats muted">
           {hosts.length} hosts · {totals.s} stacks · {totals.r}/{totals.c} containers running
@@ -111,6 +178,11 @@ function MapView() {
                 {h.name}
               </option>
             ))}
+          </select>
+          <select value={linkMode} onChange={(e) => setLinkMode(e.target.value)} aria-label="Links" title="Which lines to draw">
+            <option value="smart">Links: traffic &amp; dependencies</option>
+            <option value="all">Links: everything</option>
+            <option value="selected">Links: selection only</option>
           </select>
           <label className="toggle">
             <input type="checkbox" checked={groupStacks} onChange={(e) => setGroupStacks(e.target.checked)} /> Group by stack
@@ -126,7 +198,28 @@ function MapView() {
           <details className="menu">
             <summary>{me?.username || "…"}</summary>
             <div className="menu-items">
-              {me?.is_staff && <a href="/admin/">Admin</a>}
+              <button type="button" onClick={(e) => { closeMenu(e); setView("settings"); }}>
+                Settings
+              </button>
+              <div className="menu-sep" />
+              <div className="menu-label">Report</div>
+              <a href="/report/" target="_blank" rel="noopener" onClick={closeMenu}>
+                Printable report / PDF
+              </a>
+              <a href="/api/v1/report.json?download=1" onClick={closeMenu}>
+                Download JSON
+              </a>
+              <a href="/api/v1/report/containers.csv" onClick={closeMenu}>
+                Containers (CSV)
+              </a>
+              <a href="/api/v1/report/connections.csv" onClick={closeMenu}>
+                Connections (CSV)
+              </a>
+              <a href="/api/v1/report/findings.csv" onClick={closeMenu}>
+                Findings (CSV)
+              </a>
+              <div className="menu-sep" />
+              {me?.is_staff && <a href="/admin/">Django admin</a>}
               <form method="post" action="/logout/">
                 <input type="hidden" name="csrfmiddlewaretoken" value={api.csrfToken()} />
                 <button type="submit">Sign out</button>
@@ -167,10 +260,39 @@ function MapView() {
             <MiniMap pannable zoomable nodeStrokeWidth={2} />
           </ReactFlow>
         )}
-        <DetailsPanel node={selectedNode} onClose={() => setSelectedId(null)} isStaff={me?.is_staff} onRotate={(h) => setDialog({ mode: "rotate", host: h })} />
+        {graph && hosts.length > 0 && <Legend hosts={hosts} />}
+        {view === "settings" && me && (
+          <Settings
+            key={settingsRev}
+            me={me}
+            onClose={() => setView("map")}
+            onAdd={() => setDialog({ mode: "add" })}
+            onRotate={(h) => setDialog({ mode: "rotate", host: h })}
+            onBranding={loadBranding}
+          />
+        )}
+        <DetailsPanel
+          node={selectedNode}
+          host={selectedHost}
+          onClose={() => setSelectedId(null)}
+          isStaff={me?.is_staff}
+          onRotate={(h) => setDialog({ mode: "rotate", host: h })}
+          onLogs={(node, host) => setLogs({ hostPk: host.pk, hostName: host.name, container: node.data.name })}
+        />
       </main>
 
-      {dialog && <AddHostDialog rotateHost={dialog.mode === "rotate" ? dialog.host : null} onClose={() => setDialog(null)} onDone={load} />}
+      {logs && <LogViewer {...logs} onClose={() => setLogs(null)} />}
+
+      {dialog && (
+        <AddHostDialog
+          rotateHost={dialog.mode === "rotate" ? dialog.host : null}
+          onClose={() => {
+            setDialog(null);
+            setSettingsRev((r) => r + 1);
+          }}
+          onDone={load}
+        />
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import re
 from datetime import datetime, timezone
 
 from . import SCHEMA_VERSION, __version__
+from . import connections as conn
 from .docker_api import DockerClient
 
 SECRET_KEY_RE = re.compile(r"(pass|secret|token|key|auth|credential|cookie|private)", re.IGNORECASE)
@@ -97,7 +98,18 @@ def compose_info(labels: dict, hide_paths: bool = False) -> dict:
         "service": labels.get("com.docker.compose.service"),
         "working_dir": None if hide_paths else labels.get("com.docker.compose.project.working_dir"),
         "config_files": [] if hide_paths else [f for f in config_files.split(",") if f],
+        "depends_on": parse_depends_on(labels.get("com.docker.compose.depends_on")),
     }
+
+
+def parse_depends_on(value: str | None) -> list[str]:
+    """Compose (v2.17+) stores depends_on as "db:service_healthy:false,redis:service_started:false"."""
+    services = []
+    for item in (value or "").split(","):
+        name = item.split(":", 1)[0].strip()
+        if name and name not in services:
+            services.append(name)
+    return services
 
 
 def container_record(inspect: dict, hide_paths: bool = False) -> dict:
@@ -119,6 +131,7 @@ def container_record(inspect: dict, hide_paths: bool = False) -> dict:
         "health": health,
         "started_at": state.get("StartedAt"),
         "restart_policy": (host_config.get("RestartPolicy") or {}).get("Name") or None,
+        "restart_count": inspect.get("RestartCount") or 0,
         "network_mode": host_config.get("NetworkMode"),
         "compose": compose_info(labels, hide_paths),
         "labels": sanitize_labels(labels),
@@ -140,31 +153,85 @@ def network_record(net: dict) -> dict:
     }
 
 
+def observe_enabled() -> bool:
+    return os.environ.get("SERVCHART_OBSERVE_CONNECTIONS", "0").lower() in ("1", "true", "yes", "on")
+
+
 def collect(client: DockerClient | None = None, hostname: str | None = None) -> dict:
     client = client or DockerClient()
     hide_paths = os.environ.get("SERVCHART_HIDE_PATHS", "0") == "1"
+    include_public = os.environ.get("SERVCHART_OBSERVE_PUBLIC", "0") == "1"
     info = client.info()
     version = client.version()
-    containers = []
+
+    inspected = []
     for summary in client.containers():
         try:
-            containers.append(container_record(client.inspect_container(summary["Id"]), hide_paths))
+            inspected.append(client.inspect_container(summary["Id"]))
         except Exception:  # container vanished between list and inspect
             continue
+    containers = [container_record(i, hide_paths) for i in inspected]
     networks = [network_record(n) for n in client.networks()]
-    return {
+
+    host = {
+        "hostname": hostname or os.environ.get("SERVCHART_HOSTNAME") or info.get("Name"),
+        "os": info.get("OperatingSystem"),
+        "kernel": info.get("KernelVersion"),
+        "arch": info.get("Architecture"),
+        "cpus": info.get("NCPU"),
+        "memory_bytes": info.get("MemTotal"),
+        "docker_version": version.get("Version"),
+        "observe": "off",
+        # on-demand log viewing, opt-in per host (SERVCHART_ALLOW_LOGS=1)
+        "logs": "on" if os.environ.get("SERVCHART_ALLOW_LOGS", "0").lower() in ("1", "true", "yes", "on") else "off",
+    }
+    snapshot = {
         "schema": SCHEMA_VERSION,
         "agent_version": __version__,
         "collected_at": _now(),
-        "host": {
-            "hostname": hostname or os.environ.get("SERVCHART_HOSTNAME") or info.get("Name"),
-            "os": info.get("OperatingSystem"),
-            "kernel": info.get("KernelVersion"),
-            "arch": info.get("Architecture"),
-            "cpus": info.get("NCPU"),
-            "memory_bytes": info.get("MemTotal"),
-            "docker_version": version.get("Version"),
-        },
-        "containers": sorted(containers, key=lambda c: c["name"]),
-        "networks": sorted(networks, key=lambda n: n["name"] or ""),
+        "host": host,
+        "containers": containers,
+        "networks": networks,
     }
+
+    # The host's own addresses let the hub resolve other hosts' connections to this one.
+    # Readable only when we see the host's /proc (native, or --pid host); else SERVCHART_HOST_IPS.
+    subnets = [s for n in networks for s in n.get("subnets") or []]
+    host["ips"] = conn.host_ips(subnets) if conn.observe_available() else conn.host_ips_from_env()
+
+    if observe_enabled():
+        if conn.observe_available():
+            observe(snapshot, inspected, include_public)
+        else:
+            host["observe"] = "unavailable"  # needs --pid host when running in a container
+
+    snapshot["containers"] = sorted(containers, key=lambda c: c["name"])
+    snapshot["networks"] = sorted(networks, key=lambda n: n["name"] or "")
+    return snapshot
+
+
+def observe(snapshot: dict, inspected: list[dict], include_public: bool = False) -> None:
+    """Add observed outbound connections to each container and to the host itself."""
+    host = snapshot["host"]
+    container_ips = {n["ip"] for c in snapshot["containers"] for n in c["networks"] if n.get("ip")}
+    by_name = {c["name"]: c for c in snapshot["containers"]}
+    read = 0
+    for doc in inspected:
+        rec = by_name.get((doc.get("Name") or "").lstrip("/"))
+        state = doc.get("State") or {}
+        mode = (doc.get("HostConfig") or {}).get("NetworkMode") or ""
+        # host-mode containers share the host's table (reported below); container:X shares X's.
+        if not rec or not state.get("Running") or mode == "host" or mode.startswith("container:"):
+            continue
+        rows = conn.read_netns(state.get("Pid") or 0)
+        if rows is None:
+            continue
+        read += 1
+        own_ips = {n["ip"] for n in rec["networks"] if n.get("ip")}
+        rec["connections"] = conn.outbound(rows, exclude_ips=own_ips, include_public=include_public)
+        rec["listening"] = conn.listening_ports(rows)
+    host_rows = conn.read_netns(1)
+    if host_rows is not None:
+        # skip host -> own containers: that's Docker's port forwarding, not an application talking
+        snapshot["host_connections"] = conn.outbound(host_rows, exclude_ips=container_ips | set(host.get("ips") or []), include_public=include_public)
+    host["observe"] = "on" if (read or host_rows is not None) else "unavailable"

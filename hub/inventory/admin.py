@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Host
+from .models import AuditEvent, Host
 
 
 @admin.register(Host)
@@ -13,4 +13,17 @@ class HostAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         # Hosts are added from the map ("Add host") or `manage.py create_host`, which show the token once.
+        return False
+
+
+@admin.register(AuditEvent)
+class AuditEventAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "username", "action", "target", "ip")
+    list_filter = ("action",)
+    search_fields = ("username", "target")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False

@@ -1,4 +1,5 @@
 {
+  "host_connections": [],
   "schema": 1,
   "agent_version": "0.1.0",
   "collected_at": "2026-10-19T12:00:00+00:00",
@@ -9,7 +10,11 @@
     "arch": "x86_64",
     "cpus": 4,
     "memory_bytes": 8589934592,
-    "docker_version": "27.3.1"
+    "docker_version": "27.3.1",
+    "ips": [
+      "10.20.0.2"
+    ],
+    "observe": "on"
   },
   "containers": [
     {
@@ -27,6 +32,9 @@
         "working_dir": "/opt/stacks/proxy",
         "config_files": [
           "/opt/stacks/proxy/compose.yml"
+        ],
+        "depends_on": [
+          "authelia"
         ]
       },
       "labels": {
@@ -67,6 +75,33 @@
           "destination": "/etc/traefik",
           "rw": true
         }
+      ],
+      "connections": [
+        {
+          "ip": "172.20.0.160",
+          "port": 9091,
+          "count": 6
+        },
+        {
+          "ip": "10.20.0.3",
+          "port": 8080,
+          "count": 14
+        },
+        {
+          "ip": "10.20.0.3",
+          "port": 3000,
+          "count": 5
+        },
+        {
+          "ip": "10.20.0.3",
+          "port": 8082,
+          "count": 3
+        },
+        {
+          "ip": "10.20.0.4",
+          "port": 8989,
+          "count": 2
+        }
       ]
     },
     {
@@ -84,6 +119,9 @@
         "working_dir": "/opt/stacks/proxy",
         "config_files": [
           "/opt/stacks/proxy/compose.yml"
+        ],
+        "depends_on": [
+          "redis"
         ]
       },
       "labels": {
@@ -107,7 +145,14 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "connections": [
+        {
+          "ip": "172.20.0.24",
+          "port": 6379,
+          "count": 2
+        }
+      ]
     },
     {
       "id": "0000c320655e",
@@ -124,7 +169,8 @@
         "working_dir": "/opt/stacks/proxy",
         "config_files": [
           "/opt/stacks/proxy/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "proxy",
@@ -157,7 +203,8 @@
         "working_dir": "/opt/stacks/tunnel",
         "config_files": [
           "/opt/stacks/tunnel/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "tunnel",
@@ -190,7 +237,8 @@
         "working_dir": "/opt/stacks/monitoring",
         "config_files": [
           "/opt/stacks/monitoring/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "monitoring",
@@ -213,7 +261,19 @@
           "ips": []
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "connections": [
+        {
+          "ip": "10.20.0.3",
+          "port": 3000,
+          "count": 1
+        },
+        {
+          "ip": "10.20.0.4",
+          "port": 8096,
+          "count": 1
+        }
+      ]
     },
     {
       "id": "00006659d6c8",
@@ -230,7 +290,8 @@
         "working_dir": "/opt/stacks/monitoring",
         "config_files": [
           "/opt/stacks/monitoring/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "monitoring",

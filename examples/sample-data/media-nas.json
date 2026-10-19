@@ -1,4 +1,5 @@
 {
+  "host_connections": [],
   "schema": 1,
   "agent_version": "0.1.0",
   "collected_at": "2026-10-19T12:00:00+00:00",
@@ -9,7 +10,11 @@
     "arch": "x86_64",
     "cpus": 4,
     "memory_bytes": 17179869184,
-    "docker_version": "27.3.1"
+    "docker_version": "27.3.1",
+    "ips": [
+      "10.20.0.4"
+    ],
+    "observe": "on"
   },
   "containers": [
     {
@@ -27,7 +32,8 @@
         "working_dir": "/opt/stacks/media",
         "config_files": [
           "/opt/stacks/media/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -59,7 +65,8 @@
         "working_dir": "/opt/stacks/media",
         "config_files": [
           "/opt/stacks/media/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -84,7 +91,14 @@
           ]
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "connections": [
+        {
+          "ip": "172.20.0.25",
+          "port": 8081,
+          "count": 2
+        }
+      ]
     },
     {
       "id": "00000d2999b3",
@@ -101,7 +115,8 @@
         "working_dir": "/opt/stacks/media",
         "config_files": [
           "/opt/stacks/media/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -126,7 +141,14 @@
           ]
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "connections": [
+        {
+          "ip": "172.20.0.25",
+          "port": 8081,
+          "count": 2
+        }
+      ]
     },
     {
       "id": "0000184828cf",
@@ -143,7 +165,8 @@
         "working_dir": "/opt/stacks/media",
         "config_files": [
           "/opt/stacks/media/compose.yml"
-        ]
+        ],
+        "depends_on": []
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -183,7 +206,8 @@
         "project": null,
         "service": null,
         "working_dir": null,
-        "config_files": []
+        "config_files": [],
+        "depends_on": []
       },
       "labels": {},
       "networks": [],

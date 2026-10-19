@@ -9,8 +9,9 @@ It reads this host's Docker state (GET requests only), drops anything sensitive,
 **With Docker** (recommended):
 
 ```bash
-docker run -d --name servchart-agent --restart unless-stopped \
+docker run -d --name servchart-agent --restart unless-stopped --pid host \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e SERVCHART_OBSERVE_CONNECTIONS=1 \
   -e SERVCHART_HUB=https://servchart.example.com \
   -e SERVCHART_TOKEN=sc_... \
   opticodev/servchart-agent:latest

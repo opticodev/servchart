@@ -3,35 +3,51 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · ServChart</title>
+  <title>Sign in · {{ branding.app_name|default:"ServChart" }}</title>{% if branding.favicon_url %}
+  <link rel="icon" href="{{ branding.favicon_url }}">{% endif %}
   <style>
     :root { --bg:#f6f7f9; --card:#fff; --fg:#151a22; --muted:#5d6675; --line:#dfe3ea; --accent:#2563eb; --err:#b42318; }
     @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --card:#171b23; --fg:#e7eaf0; --muted:#97a0ae; --line:#2a303b; --accent:#5b8cff; --err:#ff8a7a; } }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--fg);
            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding:16px; }
-    form { width:100%; max-width:360px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px; }
+    .card { width:100%; max-width:360px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px; }
     h1 { margin:0 0 4px; font-size:20px; }
     p.sub { margin:0 0 20px; color:var(--muted); font-size:14px; }
     label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
     input { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
     input:focus { outline:2px solid var(--accent); outline-offset:1px; }
-    button { margin-top:20px; width:100%; padding:10px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    .btn { display:block; box-sizing:border-box; text-align:center; text-decoration:none; margin-top:20px; width:100%; padding:10px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    .btn.sso { margin-top:4px; }
+    .btn.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
+    .or { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:13px; margin:18px 0 0; }
+    .or::before, .or::after { content:""; flex:1; border-top:1px solid var(--line); }
     .err { color:var(--err); font-size:14px; margin-top:12px; }
-  </style>
+    .brand { display:flex; align-items:center; gap:10px; margin:0 0 4px; }
+    .brand img { height:32px; max-width:140px; object-fit:contain; }
+  </style>{% if branding.accent_color %}
+  <style>:root { --accent: {{ branding.accent_color }}; }</style>{% endif %}
 </head>
 <body>
-  <form method="post">
-    {% csrf_token %}
-    <h1>ServChart</h1>
+  <div class="card">
+    <div class="brand">{% if branding.logo_url %}<img src="{{ branding.logo_url }}" alt="">{% endif %}<h1 style="margin:0">{{ branding.app_name|default:"ServChart" }}</h1></div>
     <p class="sub">Map of your servers, containers and how they connect.</p>
-    {% if form.errors %}<div class="err">Wrong username or password.</div>{% endif %}
-    <label for="id_username">Username</label>
-    <input id="id_username" name="username" autocomplete="username" autofocus required>
-    <label for="id_password">Password</label>
-    <input id="id_password" name="password" type="password" autocomplete="current-password" required>
-    <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">Sign in</button>
-  </form>
+    {% if oidc_enabled %}
+      <a class="btn sso" href="{% url 'oidc-login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Sign in with {{ oidc_name }}</a>
+    {% endif %}
+    {% if show_password_form %}
+      {% if oidc_enabled %}<div class="or"><span>or</span></div>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        {% if form.errors %}<div class="err">Wrong username or password.</div>{% endif %}
+        <label for="id_username">Username</label>
+        <input id="id_username" name="username" autocomplete="username" {% if not oidc_enabled %}autofocus{% endif %} required>
+        <label for="id_password">Password</label>
+        <input id="id_password" name="password" type="password" autocomplete="current-password" required>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn{% if oidc_enabled %} secondary{% endif %}">Sign in</button>
+      </form>
+    {% endif %}
+  </div>
 </body>
 </html>

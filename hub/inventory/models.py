@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import uuid
 
 from django.conf import settings
 from django.db import models
@@ -51,3 +52,67 @@ class Host(models.Model):
             return "pending"
         age = (timezone.now() - self.last_seen).total_seconds()
         return "online" if age <= settings.SERVCHART_STALE_AFTER else "stale"
+
+
+class SiteSettings(models.Model):
+    """One row (pk=1): branding and the report schedule, editable in Settings."""
+
+    app_name = models.CharField(max_length=60, default="ServChart")
+    accent_color = models.CharField(max_length=7, blank=True, default="", help_text="#rrggbb; empty = default blue")
+    logo = models.BinaryField(null=True, blank=True)
+    logo_type = models.CharField(max_length=40, blank=True, default="")
+    favicon = models.BinaryField(null=True, blank=True)
+    favicon_type = models.CharField(max_length=40, blank=True, default="")
+    report_schedule = models.CharField(max_length=10, default="off", help_text="off, daily, weekly or monthly")
+    report_recipients = models.TextField(blank=True, default="", help_text="Comma-separated email addresses")
+    report_last_sent = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "site settings"
+        verbose_name_plural = "site settings"
+
+    def __str__(self):
+        return "Site settings"
+
+    @classmethod
+    def load(cls) -> "SiteSettings":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class LogRequest(models.Model):
+    """An admin asked to see a container's logs; relayed to the host's agent.
+
+    Short-lived by design: the result is deleted as soon as the requester has read it,
+    and anything older than a few minutes is purged.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="log_requests")
+    container = models.CharField(max_length=255)
+    tail = models.PositiveIntegerField(default=200)
+    since = models.BigIntegerField(null=True, blank=True)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    status = models.CharField(max_length=10, default="pending")  # pending, sent, done, error
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AuditEvent(models.Model):
+    """Who did what: log views, user/host changes, branding and report settings."""
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    username = models.CharField(max_length=150, blank=True, default="")
+    action = models.CharField(max_length=60)
+    target = models.CharField(max_length=255, blank=True, default="")
+    detail = models.JSONField(default=dict, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.created_at:%Y-%m-%d %H:%M} {self.username} {self.action} {self.target}"

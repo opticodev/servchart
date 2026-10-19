@@ -42,6 +42,36 @@ SERVCHART_STALE_AFTER = int(os.environ.get("SERVCHART_STALE_AFTER", "300"))
 SERVCHART_MAX_REPORT_BYTES = int(os.environ.get("SERVCHART_MAX_REPORT_BYTES", str(5 * 1024 * 1024)))
 DATA_UPLOAD_MAX_MEMORY_SIZE = SERVCHART_MAX_REPORT_BYTES
 
+# --- Single sign-on ----------------------------------------------------------------------
+# Two provider-neutral modes; both can be on at once, and local passwords keep working
+# unless SERVCHART_PASSWORD_LOGIN=0. See README "Single sign-on" for provider recipes.
+
+# 1) OpenID Connect: any standards-compliant provider (Authentik, Keycloak, Authelia, Zitadel,
+#    Kanidm, Pocket ID, Google, Microsoft Entra ID, Okta, ...). Enabled when issuer + client id are set.
+SERVCHART_OIDC_ISSUER = os.environ.get("SERVCHART_OIDC_ISSUER", "").strip().rstrip("/")
+SERVCHART_OIDC_CLIENT_ID = os.environ.get("SERVCHART_OIDC_CLIENT_ID", "").strip()
+SERVCHART_OIDC_CLIENT_SECRET = os.environ.get("SERVCHART_OIDC_CLIENT_SECRET", "").strip()  # empty = public client (PKCE only)
+SERVCHART_OIDC_SCOPES = os.environ.get("SERVCHART_OIDC_SCOPES", "openid profile email").strip()
+SERVCHART_OIDC_USERNAME_CLAIM = os.environ.get("SERVCHART_OIDC_USERNAME_CLAIM", "preferred_username").strip()
+SERVCHART_OIDC_GROUPS_CLAIM = os.environ.get("SERVCHART_OIDC_GROUPS_CLAIM", "groups").strip()
+SERVCHART_OIDC_PROVIDER_NAME = os.environ.get("SERVCHART_OIDC_PROVIDER_NAME", "single sign-on").strip()  # button: "Sign in with ..."
+SERVCHART_OIDC_TOKEN_AUTH = os.environ.get("SERVCHART_OIDC_TOKEN_AUTH", "client_secret_basic").strip()  # or client_secret_post
+SERVCHART_OIDC_ALLOW_HTTP = _env_bool("SERVCHART_OIDC_ALLOW_HTTP")  # only for local testing: the security model relies on TLS
+
+# 2) Trusted proxy headers (forward auth): Authentik, Authelia, oauth2-proxy, Tailscale serve, ...
+#    Enabled when a header AND trusted proxy addresses are set. The header is trusted ONLY on
+#    requests coming straight from SERVCHART_SSO_TRUSTED_PROXIES.
+SERVCHART_SSO_HEADER = os.environ.get("SERVCHART_SSO_HEADER", "").strip()  # username header
+SERVCHART_SSO_TRUSTED_PROXIES = _env_list("SERVCHART_SSO_TRUSTED_PROXIES")  # IPs or CIDRs
+SERVCHART_SSO_EMAIL_HEADER = os.environ.get("SERVCHART_SSO_EMAIL_HEADER", "").strip()
+SERVCHART_SSO_GROUPS_HEADER = os.environ.get("SERVCHART_SSO_GROUPS_HEADER", "").strip()
+
+# Shared by both modes
+SERVCHART_SSO_ADMIN_GROUPS = _env_list("SERVCHART_SSO_ADMIN_GROUPS")  # members become ServChart admins
+SERVCHART_SSO_CREATE_USERS = _env_bool("SERVCHART_SSO_CREATE_USERS", True)
+SERVCHART_SSO_LOGOUT_URL = os.environ.get("SERVCHART_SSO_LOGOUT_URL", "").strip()  # where "Sign out" ends up (header mode)
+SERVCHART_PASSWORD_LOGIN = _env_bool("SERVCHART_PASSWORD_LOGIN", True)  # False hides the password form (/login/?local=1 still shows it)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -60,6 +90,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "inventory.sso.TrustedHeaderSSOMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -77,6 +108,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "inventory.branding.context",
             ],
         },
     },
@@ -123,6 +155,17 @@ STORAGES = {
 }
 if DEBUG:
     STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
+
+# Email (reports). Nothing is sent unless SERVCHART_SMTP_HOST is set.
+EMAIL_HOST = os.environ.get("SERVCHART_SMTP_HOST", "").strip()
+EMAIL_PORT = int(os.environ.get("SERVCHART_SMTP_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("SERVCHART_SMTP_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("SERVCHART_SMTP_PASSWORD", "")
+EMAIL_USE_SSL = _env_bool("SERVCHART_SMTP_SSL")  # implicit TLS, usually port 465
+EMAIL_USE_TLS = _env_bool("SERVCHART_SMTP_STARTTLS", not EMAIL_USE_SSL)  # STARTTLS, usually port 587
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.environ.get("SERVCHART_SMTP_FROM", "") or (EMAIL_HOST_USER if "@" in EMAIL_HOST_USER else "servchart@localhost")
+SERVCHART_REPORT_HOUR = max(0, min(int(os.environ.get("SERVCHART_REPORT_HOUR", "7")), 23))  # local time (TIME_ZONE)
 
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"

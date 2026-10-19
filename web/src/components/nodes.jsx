@@ -13,6 +13,8 @@ export function HostNode({ data, selected }) {
   return (
     <div className={`host-node status-${data.status} ${selected ? "is-selected" : ""}`}>
       <Handle type="target" position={Position.Top} style={hidden} />
+      <Handle id="out" type="source" position={Position.Right} style={hidden} />
+      <Handle id="in" type="target" position={Position.Left} style={hidden} />
       <div className="host-head">
         <span className={`dot dot-${data.status}`} title={data.status} />
         <div className="host-title">
@@ -21,6 +23,11 @@ export function HostNode({ data, selected }) {
             {[info.os, info.cpus && `${info.cpus} CPU`, fmtBytes(info.memory_bytes)].filter(Boolean).join(" · ")}
           </span>
         </div>
+        {data.info?.observe === "on" && (
+          <span className="badge badge-live" title="Observed traffic is on for this host">
+            traffic
+          </span>
+        )}
         <span className="badge">
           {data.counts.running}/{data.counts.containers} running
         </span>
@@ -32,7 +39,7 @@ export function HostNode({ data, selected }) {
 
 export function NetworkNode({ data, selected }) {
   return (
-    <div className={`network-node ${data.internal ? "is-internal" : ""} ${selected ? "is-selected" : ""}`} title={(data.subnets || []).join(", ")}>
+    <div className={`network-node ${data.internal ? "is-internal" : ""} ${data.local ? "is-local" : ""} ${selected ? "is-selected" : ""}`} title={(data.subnets || []).join(", ")}>
       <Handle type="target" position={Position.Bottom} style={hidden} />
       <span className="net-icon" aria-hidden>⇄</span>
       <span className="net-name">{data.name}</span>
@@ -48,6 +55,8 @@ export function ContainerNode({ data, selected }) {
     <div className={`container-node state-${state} ${data.dimmed ? "is-dimmed" : ""} ${selected ? "is-selected" : ""}`}>
       <Handle type="source" position={Position.Top} style={hidden} />
       <Handle type="target" position={Position.Top} style={hidden} />
+      <Handle id="out" type="source" position={Position.Right} style={hidden} />
+      <Handle id="in" type="target" position={Position.Left} style={hidden} />
       <div className="ctr-top">
         <span className={`dot dot-${state}`} title={state} />
         <span className="ctr-name" title={data.name}>{data.name}</span>

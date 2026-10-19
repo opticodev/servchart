@@ -14,7 +14,11 @@ services:
       # SERVCHART_PUBLIC_URL: https://servchart.example.com   # URL agents use to reach the hub
       # SERVCHART_CSRF_TRUSTED_ORIGINS: https://servchart.example.com
       # SERVCHART_DEMO: "1"                                   # also load fictional demo hosts
+      SERVCHART_OBSERVE_CONNECTIONS: "1"                     # draw traffic between containers (needs pid: host)
+      # SERVCHART_ALLOW_LOGS: "1"                             # let admins view this host's container logs
+      # SERVCHART_SMTP_HOST: smtp.example.com                 # + _USER, _PASSWORD, _FROM: emailed reports
       TZ: UTC
+    pid: host   # lets the hub see this host's containers' connections; remove to disable traffic lines
     volumes:
       - servchart-data:/data
       # Lets the hub map its own host. Remove this line to disable.
