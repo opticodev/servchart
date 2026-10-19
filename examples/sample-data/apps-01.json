@@ -1,0 +1,367 @@
+{
+  "schema": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-10-19T12:00:00+00:00",
+  "host": {
+    "hostname": "apps-01",
+    "os": "Ubuntu 24.04.1 LTS",
+    "kernel": "6.8.0",
+    "arch": "x86_64",
+    "cpus": 8,
+    "memory_bytes": 34359738368,
+    "docker_version": "27.3.1"
+  },
+  "containers": [
+    {
+      "id": "00003cadba78",
+      "name": "nextcloud-app",
+      "image": "nextcloud:29-apache",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "nextcloud_default",
+      "compose": {
+        "project": "nextcloud",
+        "service": "app"
+      },
+      "labels": {
+        "com.docker.compose.project": "nextcloud",
+        "com.docker.compose.service": "app"
+      },
+      "networks": [
+        {
+          "name": "nextcloud_default",
+          "ip": "172.20.0.26",
+          "aliases": [
+            "app"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 80,
+          "protocol": "tcp",
+          "public": 8080,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": [
+        {
+          "type": "volume",
+          "source": "nextcloud_data",
+          "destination": "/var/www/html",
+          "rw": true
+        }
+      ]
+    },
+    {
+      "id": "00002ffa5c7f",
+      "name": "nextcloud-db",
+      "image": "postgres:16",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "nextcloud_default",
+      "compose": {
+        "project": "nextcloud",
+        "service": "db"
+      },
+      "labels": {
+        "com.docker.compose.project": "nextcloud",
+        "com.docker.compose.service": "db"
+      },
+      "networks": [
+        {
+          "name": "nextcloud_default",
+          "ip": "172.20.0.33",
+          "aliases": [
+            "db"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": [
+        {
+          "type": "volume",
+          "source": "nextcloud_db",
+          "destination": "/var/lib/postgresql/data",
+          "rw": true
+        }
+      ]
+    },
+    {
+      "id": "0000ab103605",
+      "name": "nextcloud-redis",
+      "image": "redis:7-alpine",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "nextcloud_default",
+      "compose": {
+        "project": "nextcloud",
+        "service": "redis"
+      },
+      "labels": {
+        "com.docker.compose.project": "nextcloud",
+        "com.docker.compose.service": "redis"
+      },
+      "networks": [
+        {
+          "name": "nextcloud_default",
+          "ip": "172.20.0.143",
+          "aliases": [
+            "redis"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "0000dad9ea69",
+      "name": "gitea",
+      "image": "gitea/gitea:1.22",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "git_default",
+      "compose": {
+        "project": "git",
+        "service": "server"
+      },
+      "labels": {
+        "com.docker.compose.project": "git",
+        "com.docker.compose.service": "server"
+      },
+      "networks": [
+        {
+          "name": "git_default",
+          "ip": "172.20.0.11",
+          "aliases": [
+            "server"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 3000,
+          "protocol": "tcp",
+          "public": 3000,
+          "ips": [
+            "0.0.0.0"
+          ]
+        },
+        {
+          "private": 22,
+          "protocol": "tcp",
+          "public": 2222,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "000071612315",
+      "name": "gitea-db",
+      "image": "postgres:16",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "git_default",
+      "compose": {
+        "project": "git",
+        "service": "db"
+      },
+      "labels": {
+        "com.docker.compose.project": "git",
+        "com.docker.compose.service": "db"
+      },
+      "networks": [
+        {
+          "name": "git_default",
+          "ip": "172.20.0.183",
+          "aliases": [
+            "db"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "00001f12d8b8",
+      "name": "gitea-runner",
+      "image": "gitea/act_runner:0.2",
+      "state": "exited",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "git_default",
+      "compose": {
+        "project": "git",
+        "service": "runner"
+      },
+      "labels": {
+        "com.docker.compose.project": "git",
+        "com.docker.compose.service": "runner"
+      },
+      "networks": [
+        {
+          "name": "git_default",
+          "ip": "172.20.0.26",
+          "aliases": [
+            "runner"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "0000e87f3a96",
+      "name": "vaultwarden",
+      "image": "vaultwarden/server:1.32",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "vault_default",
+      "compose": {
+        "project": "vault",
+        "service": "web"
+      },
+      "labels": {
+        "com.docker.compose.project": "vault",
+        "com.docker.compose.service": "web"
+      },
+      "networks": [
+        {
+          "name": "vault_default",
+          "ip": "172.20.0.184",
+          "aliases": [
+            "web"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 80,
+          "protocol": "tcp",
+          "public": 8082,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "00003ff0d1ac",
+      "name": "backup",
+      "image": "kopia/kopia:0.17",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "bridge",
+      "compose": {
+        "project": null,
+        "service": null
+      },
+      "labels": {},
+      "networks": [
+        {
+          "name": "bridge",
+          "ip": "172.20.0.126",
+          "aliases": []
+        }
+      ],
+      "ports": [
+        {
+          "private": 51515,
+          "protocol": "tcp",
+          "public": 51515,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "000052cc7728",
+      "name": "watchtower",
+      "image": "containrrr/watchtower:latest",
+      "state": "running",
+      "health": "unhealthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "bridge",
+      "compose": {
+        "project": null,
+        "service": null
+      },
+      "labels": {},
+      "networks": [
+        {
+          "name": "bridge",
+          "ip": "172.20.0.162",
+          "aliases": []
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    }
+  ],
+  "networks": [
+    {
+      "id": "bridge",
+      "name": "bridge",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.17.0.0/16"
+      ]
+    },
+    {
+      "id": "nextcloud_de",
+      "name": "nextcloud_default",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.22.0.0/16"
+      ]
+    },
+    {
+      "id": "git_default",
+      "name": "git_default",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.23.0.0/16"
+      ]
+    },
+    {
+      "id": "vault_defaul",
+      "name": "vault_default",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.24.0.0/16"
+      ]
+    }
+  ]
+}

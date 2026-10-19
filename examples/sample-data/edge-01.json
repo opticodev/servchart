@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-10-19T12:00:00+00:00",
+  "host": {
+    "hostname": "edge-01",
+    "os": "Debian GNU/Linux 12",
+    "kernel": "6.8.0",
+    "arch": "x86_64",
+    "cpus": 4,
+    "memory_bytes": 8589934592,
+    "docker_version": "27.3.1"
+  },
+  "containers": [
+    {
+      "id": "0000490e01ec",
+      "name": "traefik",
+      "image": "traefik:v3.1",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "proxy",
+      "compose": {
+        "project": "proxy",
+        "service": "traefik"
+      },
+      "labels": {
+        "com.docker.compose.project": "proxy",
+        "com.docker.compose.service": "traefik"
+      },
+      "networks": [
+        {
+          "name": "proxy",
+          "ip": "172.20.0.166",
+          "aliases": [
+            "traefik"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 80,
+          "protocol": "tcp",
+          "public": 80,
+          "ips": [
+            "0.0.0.0"
+          ]
+        },
+        {
+          "private": 443,
+          "protocol": "tcp",
+          "public": 443,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": [
+        {
+          "type": "bind",
+          "source": "/srv/traefik",
+          "destination": "/etc/traefik",
+          "rw": true
+        }
+      ]
+    },
+    {
+      "id": "00003d7d47ce",
+      "name": "authelia",
+      "image": "authelia/authelia:4.38",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "proxy",
+      "compose": {
+        "project": "proxy",
+        "service": "authelia"
+      },
+      "labels": {
+        "com.docker.compose.project": "proxy",
+        "com.docker.compose.service": "authelia"
+      },
+      "networks": [
+        {
+          "name": "proxy",
+          "ip": "172.20.0.160",
+          "aliases": [
+            "authelia"
+          ]
+        },
+        {
+          "name": "auth_internal",
+          "ip": "172.21.0.160",
+          "aliases": [
+            "authelia"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "0000c320655e",
+      "name": "authelia-redis",
+      "image": "redis:7-alpine",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "auth_internal",
+      "compose": {
+        "project": "proxy",
+        "service": "redis"
+      },
+      "labels": {
+        "com.docker.compose.project": "proxy",
+        "com.docker.compose.service": "redis"
+      },
+      "networks": [
+        {
+          "name": "auth_internal",
+          "ip": "172.20.0.24",
+          "aliases": [
+            "redis"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "0000752c7cac",
+      "name": "cloudflared",
+      "image": "cloudflare/cloudflared:latest",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "proxy",
+      "compose": {
+        "project": "tunnel",
+        "service": "cloudflared"
+      },
+      "labels": {
+        "com.docker.compose.project": "tunnel",
+        "com.docker.compose.service": "cloudflared"
+      },
+      "networks": [
+        {
+          "name": "proxy",
+          "ip": "172.20.0.174",
+          "aliases": [
+            "cloudflared"
+          ]
+        }
+      ],
+      "ports": [],
+      "mounts": []
+    },
+    {
+      "id": "0000afa22568",
+      "name": "uptime-kuma",
+      "image": "louislam/uptime-kuma:1",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "proxy",
+      "compose": {
+        "project": "monitoring",
+        "service": "kuma"
+      },
+      "labels": {
+        "com.docker.compose.project": "monitoring",
+        "com.docker.compose.service": "kuma"
+      },
+      "networks": [
+        {
+          "name": "proxy",
+          "ip": "172.20.0.10",
+          "aliases": [
+            "kuma"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 3001,
+          "protocol": "tcp",
+          "public": null,
+          "ips": []
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "00006659d6c8",
+      "name": "node-exporter",
+      "image": "prom/node-exporter:v1.8.2",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "host",
+      "compose": {
+        "project": "monitoring",
+        "service": "node-exporter"
+      },
+      "labels": {
+        "com.docker.compose.project": "monitoring",
+        "com.docker.compose.service": "node-exporter"
+      },
+      "networks": [],
+      "ports": [],
+      "mounts": []
+    }
+  ],
+  "networks": [
+    {
+      "id": "bridge",
+      "name": "bridge",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.17.0.0/16"
+      ]
+    },
+    {
+      "id": "host",
+      "name": "host",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        ""
+      ]
+    },
+    {
+      "id": "proxy",
+      "name": "proxy",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.20.0.0/16"
+      ]
+    },
+    {
+      "id": "auth_interna",
+      "name": "auth_internal",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": true,
+      "subnets": [
+        "172.21.0.0/16"
+      ]
+    }
+  ]
+}

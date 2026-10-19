@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-10-19T12:00:00+00:00",
+  "host": {
+    "hostname": "media-nas",
+    "os": "Ubuntu 22.04.5 LTS",
+    "kernel": "6.8.0",
+    "arch": "x86_64",
+    "cpus": 4,
+    "memory_bytes": 17179869184,
+    "docker_version": "27.3.1"
+  },
+  "containers": [
+    {
+      "id": "00009a2b9100",
+      "name": "jellyfin",
+      "image": "jellyfin/jellyfin:10.9",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "host",
+      "compose": {
+        "project": "media",
+        "service": "jellyfin"
+      },
+      "labels": {
+        "com.docker.compose.project": "media",
+        "com.docker.compose.service": "jellyfin"
+      },
+      "networks": [],
+      "ports": [],
+      "mounts": [
+        {
+          "type": "bind",
+          "source": "/mnt/media",
+          "destination": "/media",
+          "rw": true
+        }
+      ]
+    },
+    {
+      "id": "000016f81413",
+      "name": "sonarr",
+      "image": "lscr.io/linuxserver/sonarr:latest",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "media_default",
+      "compose": {
+        "project": "media",
+        "service": "sonarr"
+      },
+      "labels": {
+        "com.docker.compose.project": "media",
+        "com.docker.compose.service": "sonarr"
+      },
+      "networks": [
+        {
+          "name": "media_default",
+          "ip": "172.20.0.21",
+          "aliases": [
+            "sonarr"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 8989,
+          "protocol": "tcp",
+          "public": 8989,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "00000d2999b3",
+      "name": "radarr",
+      "image": "lscr.io/linuxserver/radarr:latest",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "media_default",
+      "compose": {
+        "project": "media",
+        "service": "radarr"
+      },
+      "labels": {
+        "com.docker.compose.project": "media",
+        "com.docker.compose.service": "radarr"
+      },
+      "networks": [
+        {
+          "name": "media_default",
+          "ip": "172.20.0.133",
+          "aliases": [
+            "radarr"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 7878,
+          "protocol": "tcp",
+          "public": 7878,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "0000184828cf",
+      "name": "qbittorrent",
+      "image": "lscr.io/linuxserver/qbittorrent:latest",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "media_default",
+      "compose": {
+        "project": "media",
+        "service": "qbittorrent"
+      },
+      "labels": {
+        "com.docker.compose.project": "media",
+        "com.docker.compose.service": "qbittorrent"
+      },
+      "networks": [
+        {
+          "name": "media_default",
+          "ip": "172.20.0.25",
+          "aliases": [
+            "qbittorrent"
+          ]
+        }
+      ],
+      "ports": [
+        {
+          "private": 8081,
+          "protocol": "tcp",
+          "public": 8081,
+          "ips": [
+            "0.0.0.0"
+          ]
+        }
+      ],
+      "mounts": []
+    },
+    {
+      "id": "0000d6bbfdfc",
+      "name": "samba",
+      "image": "dperson/samba:latest",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-10-01T08:00:00Z",
+      "restart_policy": "unless-stopped",
+      "network_mode": "host",
+      "compose": {
+        "project": null,
+        "service": null
+      },
+      "labels": {},
+      "networks": [],
+      "ports": [],
+      "mounts": []
+    }
+  ],
+  "networks": [
+    {
+      "id": "bridge",
+      "name": "bridge",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.17.0.0/16"
+      ]
+    },
+    {
+      "id": "host",
+      "name": "host",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        ""
+      ]
+    },
+    {
+      "id": "media_defaul",
+      "name": "media_default",
+      "driver": "bridge",
+      "scope": "local",
+      "internal": false,
+      "subnets": [
+        "172.25.0.0/16"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Django runtime data (database, generated secret key) and build output
+hub/data/
+hub/staticfiles/
+hub/web_dist/
+
+# Node
+web/node_modules/
+web/dist/
+
+# Your real inventory never belongs in the repo
+*.inventory.json
+local/
+.env
+.env.*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

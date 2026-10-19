@@ -1,0 +1,24 @@
+# Quick start:  docker compose up -d   ->  http://localhost:8484
+# The admin password is printed in the logs on first start (docker compose logs hub),
+# unless you set SERVCHART_ADMIN_PASSWORD below.
+services:
+  hub:
+    image: ghcr.io/opticodev/servchart-hub:latest
+    build: .
+    container_name: servchart-hub
+    restart: unless-stopped
+    ports:
+      - "8484:8484"
+    environment:
+      # SERVCHART_ADMIN_PASSWORD: change-me
+      # SERVCHART_PUBLIC_URL: https://servchart.example.com   # URL agents use to reach the hub
+      # SERVCHART_CSRF_TRUSTED_ORIGINS: https://servchart.example.com
+      # SERVCHART_DEMO: "1"                                   # also load fictional demo hosts
+      TZ: UTC
+    volumes:
+      - servchart-data:/data
+      # Lets the hub map its own host. Remove this line to disable.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  servchart-data:

@@ -1,0 +1,9 @@
+.git
+**/__pycache__
+**/*.pyc
+web/node_modules
+hub/data
+hub/staticfiles
+hub/web_dist
+local
+.env
