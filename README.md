@@ -30,8 +30,10 @@ docker run -d --name servchart-agent --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e SERVCHART_HUB=https://servchart.example.com \
   -e SERVCHART_TOKEN=sc_... \
-  ghcr.io/opticodev/servchart-agent:latest
+  opticodev/servchart-agent:latest
 ```
+
+Images are on Docker Hub ([`opticodev/servchart-hub`](https://hub.docker.com/r/opticodev/servchart-hub), [`opticodev/servchart-agent`](https://hub.docker.com/r/opticodev/servchart-agent)) and mirrored on GitHub as `ghcr.io/opticodev/servchart-hub` and `ghcr.io/opticodev/servchart-agent`, for anyone who hits Docker Hub's pull limits.
 
 The agent connects **out** to the hub. Hosts don't open any ports, so it works for cloud VMs and machines behind NAT. It reports every 60 seconds.
 
@@ -73,7 +75,7 @@ Host tokens are stored only as SHA-256 hashes. Each host has its own token. Disa
 docker run -d --name dockerproxy -e CONTAINERS=1 -e NETWORKS=1 -e INFO=1 -e VERSION=1 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro --network servchart tecnativa/docker-socket-proxy
 docker run -d --name servchart-agent --network servchart -e DOCKER_HOST=tcp://dockerproxy:2375 \
-  -e SERVCHART_HUB=... -e SERVCHART_TOKEN=... ghcr.io/opticodev/servchart-agent:latest
+  -e SERVCHART_HUB=... -e SERVCHART_TOKEN=... opticodev/servchart-agent:latest
 ```
 
 See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
@@ -93,7 +95,7 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 | `SERVCHART_STALE_AFTER` | `300` | Seconds without a report before a host shows as stale |
 | `SERVCHART_DB` | `sqlite` | `postgres` to use `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 | `SERVCHART_DEMO` | `0` | Load fictional demo hosts on start |
-| `SERVCHART_AGENT_IMAGE` | `ghcr.io/opticodev/servchart-agent:latest` | Image shown in the install command |
+| `SERVCHART_AGENT_IMAGE` | `opticodev/servchart-agent:latest` | Image shown in the install command |
 
 ### Agent
 
@@ -128,7 +130,7 @@ cd agent && python -m unittest discover -s tests
 
 ## Releasing
 
-See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then push a `vX.Y.Z` tag. GitHub Actions publishes both images to GHCR and the agent to PyPI.
+See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then push a `vX.Y.Z` tag. GitHub Actions publishes both images to Docker Hub and GHCR, and the agent to PyPI.
 
 ## Roadmap
 
@@ -137,7 +139,6 @@ See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then pus
 - [ ] Live status push (WebSockets) instead of 15 s polling
 - [ ] Snapshot history and "what changed" diff
 - [ ] Export the map as SVG/PNG
-- [ ] Multi-arch agent and hub images published to GHCR
 
 ## License
 

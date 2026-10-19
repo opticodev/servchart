@@ -70,7 +70,7 @@ class ReportApiTests(TestCase):
         self.assertEqual(self.post({**REPORT, "schema": 99}).status_code, 400)
 
     def test_token_not_stored_in_plaintext(self):
-        self.assertNotIn(self.token, json.dumps(list(Host.objects.values())))
+        self.assertNotIn(self.token, json.dumps(list(Host.objects.values()), default=str))
 
     def test_agent_token_cannot_read_graph(self):
         resp = self.client.get("/api/v1/graph", HTTP_AUTHORIZATION=f"Bearer {self.token}")

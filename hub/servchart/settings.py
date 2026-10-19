@@ -35,7 +35,7 @@ CSRF_TRUSTED_ORIGINS = _env_list("SERVCHART_CSRF_TRUSTED_ORIGINS")
 # Public URL agents should use; shown in the "Add host" command. Falls back to the request URL.
 SERVCHART_PUBLIC_URL = os.environ.get("SERVCHART_PUBLIC_URL", "").rstrip("/")
 # Agent image used in the generated install command.
-SERVCHART_AGENT_IMAGE = os.environ.get("SERVCHART_AGENT_IMAGE", "ghcr.io/opticodev/servchart-agent:latest")
+SERVCHART_AGENT_IMAGE = os.environ.get("SERVCHART_AGENT_IMAGE", "opticodev/servchart-agent:latest")
 # Hosts that haven't reported for this many seconds are shown as stale.
 SERVCHART_STALE_AFTER = int(os.environ.get("SERVCHART_STALE_AFTER", "300"))
 # Largest accepted agent report (bytes).

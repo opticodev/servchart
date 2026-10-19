@@ -13,7 +13,7 @@ docker run -d --name servchart-agent --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e SERVCHART_HUB=https://servchart.example.com \
   -e SERVCHART_TOKEN=sc_... \
-  ghcr.io/opticodev/servchart-agent:latest
+  opticodev/servchart-agent:latest
 ```
 
 **Without Docker**, from PyPI. The user running it needs access to the Docker socket, for example by being in the `docker` group:

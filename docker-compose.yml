@@ -3,7 +3,7 @@
 # unless you set SERVCHART_ADMIN_PASSWORD below.
 services:
   hub:
-    image: ghcr.io/opticodev/servchart-hub:latest
+    image: opticodev/servchart-hub:latest
     build: .
     container_name: servchart-hub
     restart: unless-stopped
