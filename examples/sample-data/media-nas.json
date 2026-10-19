@@ -23,7 +23,11 @@
       "network_mode": "host",
       "compose": {
         "project": "media",
-        "service": "jellyfin"
+        "service": "jellyfin",
+        "working_dir": "/opt/stacks/media",
+        "config_files": [
+          "/opt/stacks/media/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -51,7 +55,11 @@
       "network_mode": "media_default",
       "compose": {
         "project": "media",
-        "service": "sonarr"
+        "service": "sonarr",
+        "working_dir": "/opt/stacks/media",
+        "config_files": [
+          "/opt/stacks/media/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -89,7 +97,11 @@
       "network_mode": "media_default",
       "compose": {
         "project": "media",
-        "service": "radarr"
+        "service": "radarr",
+        "working_dir": "/opt/stacks/media",
+        "config_files": [
+          "/opt/stacks/media/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -127,7 +139,11 @@
       "network_mode": "media_default",
       "compose": {
         "project": "media",
-        "service": "qbittorrent"
+        "service": "qbittorrent",
+        "working_dir": "/opt/stacks/media",
+        "config_files": [
+          "/opt/stacks/media/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "media",
@@ -165,7 +181,9 @@
       "network_mode": "host",
       "compose": {
         "project": null,
-        "service": null
+        "service": null,
+        "working_dir": null,
+        "config_files": []
       },
       "labels": {},
       "networks": [],

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "servchart-agent"
+dynamic = ["version"]
+description = "ServChart agent: reports a host's Docker containers, networks and Compose stacks to a ServChart hub."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "OptiCoDev" }]
+keywords = ["docker", "homelab", "self-hosted", "infrastructure", "monitoring", "topology"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Monitoring",
+  "Topic :: System :: Systems Administration",
+]
+dependencies = []  # standard library only
+
+[project.urls]
+Homepage = "https://github.com/opticodev/servchart"
+Issues = "https://github.com/opticodev/servchart/issues"
+
+[project.scripts]
+servchart-agent = "servchart_agent.__main__:main"
+
+[tool.hatch.version]
+path = "servchart_agent/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["servchart_agent", "tests", "README.md", "LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["servchart_agent"]

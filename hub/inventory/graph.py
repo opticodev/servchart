@@ -3,6 +3,7 @@
 Node ids are stable across refreshes so the UI can keep positions/selection:
     host:<host_id>
     net:<host_id>:<network name>
+    stack:<host_id>:<compose project>   (or "~standalone")
     ctr:<host_id>:<container name>
 """
 
@@ -12,6 +13,8 @@ from .models import Host
 
 # Networks every Docker host has; shown only when something is attached to them.
 DEFAULT_NETWORKS = {"bridge", "host", "none"}
+# Bucket for containers that weren't started by Docker Compose.
+STANDALONE = "~standalone"
 
 
 def host_summary(host: Host) -> dict:
@@ -30,6 +33,7 @@ def host_summary(host: Host) -> dict:
             "containers": len(containers),
             "running": sum(1 for c in containers if c.get("state") == "running"),
             "networks": len(snap.get("networks") or []),
+            "stacks": len({(c.get("compose") or {}).get("project") for c in containers} - {None}),
         },
     }
 
@@ -63,10 +67,39 @@ def build_graph(hosts=None) -> dict:
                 }
             )
 
+        stacks = {}
+        for c in containers:
+            project = (c.get("compose") or {}).get("project")
+            key = project or STANDALONE
+            s = stacks.setdefault(
+                key,
+                {
+                    "id": f"stack:{hid}:{key}",
+                    "name": project,
+                    "standalone": project is None,
+                    "working_dir": None,
+                    "config_files": [],
+                    "containers": [],
+                    "running": 0,
+                },
+            )
+            compose = c.get("compose") or {}
+            s["working_dir"] = s["working_dir"] or compose.get("working_dir")
+            for f in compose.get("config_files") or []:
+                if f not in s["config_files"]:
+                    s["config_files"].append(f)
+            s["containers"].append({"name": c["name"], "service": compose.get("service"), "state": c.get("state"), "health": c.get("health")})
+            s["running"] += c.get("state") == "running"
+        for key in sorted(stacks, key=lambda k: (k == STANDALONE, k)):
+            s = stacks[key]
+            s["total"] = len(s["containers"])
+            nodes.append({"id": s["id"], "type": "stack", "host": host_node_id, "data": s})
+
         names = {c["name"] for c in containers}
         for c in containers:
             cid = f"ctr:{hid}:{c['name']}"
-            nodes.append({"id": cid, "type": "container", "host": host_node_id, "data": c})
+            stack_id = f"stack:{hid}:{(c.get('compose') or {}).get('project') or STANDALONE}"
+            nodes.append({"id": cid, "type": "container", "host": host_node_id, "stack": stack_id, "data": c})
             mode = c.get("network_mode") or ""
             if mode == "host":
                 edges.append({"id": f"{cid}->host", "source": cid, "target": host_node_id, "kind": "host-network"})

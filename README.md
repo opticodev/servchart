@@ -2,7 +2,7 @@
 
 **Map your servers, containers and how they connect.**
 
-ServChart draws a live, zoomable map of every Docker host you run: the hosts, their networks, the containers on each network, published ports, Compose projects and health. Install one small agent per host, open the hub, and the map builds itself.
+ServChart draws a live, zoomable map of every Docker host you run: the hosts, their Compose stacks and the folders they live in, networks, containers, published ports and health. Install one small agent per host, open the hub, and the map builds itself.
 
 *ServChart by [OptiCoDev](https://github.com/opticodev).*
 
@@ -35,6 +35,12 @@ docker run -d --name servchart-agent --restart unless-stopped \
 
 The agent connects **out** to the hub. Hosts don't open any ports, so it works for cloud VMs and machines behind NAT. It reports every 60 seconds.
 
+No Docker for the agent? It's also on PyPI: `pipx install servchart-agent`, then `servchart-agent --hub ... --token ...`. The user running it needs access to the Docker socket.
+
+## Stacks
+
+Containers started by Docker Compose (including Portainer and Dockge stacks) are grouped into a box per stack. The box shows the stack's folder, and clicking it lists its compose files and the state of each service. Everything else goes in a **Standalone containers** box. Turn grouping off with **Group by stack** in the toolbar. ServChart reads this from the labels Compose puts on every container, so it never needs access to your compose files.
+
 ## How it works
 
 ```
@@ -54,10 +60,10 @@ The agent connects **out** to the hub. Hosts don't open any ports, so it works f
 
 What leaves a host:
 
-- **Sent:** container names, images, state and health, networks and IPs, published ports, mount points, restart policy, Compose project and service, and labels.
+- **Sent:** container names, images, state and health, networks and IPs, published ports, mount points, restart policy, Compose project, service, folder and compose file paths, and labels.
 - **Never sent:** environment variables (they're never read), container commands and arguments, and file contents.
 - **Redacted:** label values whose key contains `pass`, `secret`, `token`, `key`, `auth`, `credential`, `cookie` or `private` are replaced with `[redacted]`. The hub applies the same rules again on its side, so a modified agent can't store more.
-- **Optional:** set `SERVCHART_HIDE_PATHS=1` on the agent to drop bind-mount host paths.
+- **Optional:** set `SERVCHART_HIDE_PATHS=1` on the agent to drop bind-mount host paths and stack folders.
 
 Host tokens are stored only as SHA-256 hashes. Each host has its own token. Disable or rotate it at any time from the map or the admin.
 
@@ -97,7 +103,7 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 | `SERVCHART_TOKEN` | – | Host token (required) |
 | `SERVCHART_INTERVAL` | `60` | Seconds between reports |
 | `SERVCHART_HOSTNAME` | Docker's host name | Name reported for the host |
-| `SERVCHART_HIDE_PATHS` | `0` | Don't send bind-mount host paths |
+| `SERVCHART_HIDE_PATHS` | `0` | Don't send bind-mount host paths or stack folders |
 | `SERVCHART_CA_FILE` / `SERVCHART_INSECURE` | – | Custom CA for a self-signed hub / skip TLS checks (not recommended) |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Or `tcp://dockerproxy:2375` |
 
@@ -119,6 +125,10 @@ cd web && npm install && npm run dev
 # agent
 cd agent && python -m unittest discover -s tests
 ```
+
+## Releasing
+
+See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then push a `vX.Y.Z` tag. GitHub Actions publishes both images to GHCR and the agent to PyPI.
 
 ## Roadmap
 

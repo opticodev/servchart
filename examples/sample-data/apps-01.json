@@ -23,7 +23,11 @@
       "network_mode": "nextcloud_default",
       "compose": {
         "project": "nextcloud",
-        "service": "app"
+        "service": "app",
+        "working_dir": "/opt/stacks/nextcloud",
+        "config_files": [
+          "/opt/stacks/nextcloud/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "nextcloud",
@@ -68,7 +72,11 @@
       "network_mode": "nextcloud_default",
       "compose": {
         "project": "nextcloud",
-        "service": "db"
+        "service": "db",
+        "working_dir": "/opt/stacks/nextcloud",
+        "config_files": [
+          "/opt/stacks/nextcloud/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "nextcloud",
@@ -104,7 +112,11 @@
       "network_mode": "nextcloud_default",
       "compose": {
         "project": "nextcloud",
-        "service": "redis"
+        "service": "redis",
+        "working_dir": "/opt/stacks/nextcloud",
+        "config_files": [
+          "/opt/stacks/nextcloud/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "nextcloud",
@@ -133,7 +145,11 @@
       "network_mode": "git_default",
       "compose": {
         "project": "git",
-        "service": "server"
+        "service": "server",
+        "working_dir": "/opt/stacks/git",
+        "config_files": [
+          "/opt/stacks/git/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "git",
@@ -179,7 +195,11 @@
       "network_mode": "git_default",
       "compose": {
         "project": "git",
-        "service": "db"
+        "service": "db",
+        "working_dir": "/opt/stacks/git",
+        "config_files": [
+          "/opt/stacks/git/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "git",
@@ -208,7 +228,11 @@
       "network_mode": "git_default",
       "compose": {
         "project": "git",
-        "service": "runner"
+        "service": "runner",
+        "working_dir": "/opt/stacks/git",
+        "config_files": [
+          "/opt/stacks/git/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "git",
@@ -237,7 +261,11 @@
       "network_mode": "vault_default",
       "compose": {
         "project": "vault",
-        "service": "web"
+        "service": "web",
+        "working_dir": "/opt/stacks/vault",
+        "config_files": [
+          "/opt/stacks/vault/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "vault",
@@ -275,7 +303,9 @@
       "network_mode": "bridge",
       "compose": {
         "project": null,
-        "service": null
+        "service": null,
+        "working_dir": null,
+        "config_files": []
       },
       "labels": {},
       "networks": [
@@ -308,7 +338,9 @@
       "network_mode": "bridge",
       "compose": {
         "project": null,
-        "service": null
+        "service": null,
+        "working_dir": null,
+        "config_files": []
       },
       "labels": {},
       "networks": [

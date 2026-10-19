@@ -68,4 +68,31 @@ export function ContainerNode({ data, selected }) {
   );
 }
 
-export const nodeTypes = { host: HostNode, network: NetworkNode, container: ContainerNode };
+function shortPath(p) {
+  if (!p) return "";
+  return p.length > 38 ? "…" + p.slice(-37) : p;
+}
+
+export function StackNode({ data, selected }) {
+  const allUp = data.running === data.total;
+  return (
+    <div className={`stack-node ${data.standalone ? "is-standalone" : ""} ${data.dimmed ? "is-dimmed" : ""} ${selected ? "is-selected" : ""}`}>
+      <div className="stack-head">
+        <span className="stack-icon" aria-hidden>
+          {data.standalone ? "▢" : "▤"}
+        </span>
+        <div className="stack-title">
+          <strong title={data.name || "Standalone containers"}>{data.standalone ? "Standalone containers" : data.name}</strong>
+          <span className="muted mono-small" title={data.working_dir || ""}>
+            {data.standalone ? "not started by Compose" : shortPath(data.working_dir) || "folder unknown"}
+          </span>
+        </div>
+        <span className={`stack-count ${allUp ? "" : "is-partial"}`}>
+          {data.running}/{data.total}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export const nodeTypes = { host: HostNode, network: NetworkNode, stack: StackNode, container: ContainerNode };

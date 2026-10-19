@@ -5,6 +5,7 @@
   --muted: #5e6776;
   --line: #dde2ea;
   --host-bg: #fbfcfd;
+  --stack-bg: #f5f7fb;
   --accent: #2563eb;
   --accent-soft: #e5edff;
   --ok: #16a34a;
@@ -26,6 +27,7 @@
     --muted: #98a1b0;
     --line: #2a313c;
     --host-bg: #12161c;
+    --stack-bg: #181d25;
     --accent: #5b8cff;
     --accent-soft: #1d2a4a;
     --ok: #3fbf6b;
@@ -147,3 +149,19 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -appl
   .search { flex: 1; width: auto; }
   .details { top: auto; height: 55%; left: 12px; width: auto; }
 }
+
+/* Stacks (Compose projects) */
+.stack-node { width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--stack-bg); }
+.stack-node.is-standalone { border-style: dashed; background: transparent; }
+.stack-node.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.stack-node.is-dimmed { opacity: 0.35; }
+.stack-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; height: 42px; }
+.stack-icon { color: var(--accent); font-size: 14px; }
+.stack-title { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.stack-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mono-small { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stack-count { font-size: 12px; padding: 1px 7px; border-radius: 999px; background: var(--chip-bg); color: var(--muted); }
+.stack-count.is-partial { background: #fef3c7; color: #92400e; }
+.react-flow__node-stack { z-index: 0; }
+.stack-list { list-style: none; margin: 0; padding: 0; }
+.stack-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }

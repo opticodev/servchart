@@ -20,7 +20,7 @@ REPORT = {
             "network_mode": "app_default",
             "env": ["PASSWORD=leak"],
             "labels": {"com.example.api_token": "leak2", "title": "web"},
-            "compose": {"project": "app", "service": "web"},
+            "compose": {"project": "app", "service": "web", "working_dir": "/srv/app", "config_files": ["/srv/app/compose.yml"]},
             "networks": [{"name": "app_default", "ip": "172.18.0.2", "aliases": ["web"]}],
             "ports": [{"private": 80, "protocol": "tcp", "public": 8080, "ips": ["0.0.0.0"]}],
             "mounts": [],
@@ -134,4 +134,10 @@ class GraphTests(TestCase):
         self.assertIn((f"ctr:{hid}:web", "network"), kinds)
         self.assertIn((f"ctr:{hid}:netdata", "host-network"), kinds)
         self.assertIn((f"ctr:{hid}:sidecar", "shared-netns"), kinds)
-        self.assertEqual(g["hosts"][0]["counts"], {"containers": 3, "running": 2, "networks": 3})
+        self.assertEqual(g["hosts"][0]["counts"], {"containers": 3, "running": 2, "networks": 3, "stacks": 1})
+        stacks = {n["id"]: n["data"] for n in g["nodes"] if n["type"] == "stack"}
+        app = stacks[f"stack:{hid}:app"]
+        self.assertEqual((app["working_dir"], app["config_files"], app["total"], app["running"]), ("/srv/app", ["/srv/app/compose.yml"], 1, 1))
+        self.assertEqual(stacks[f"stack:{hid}:~standalone"]["total"], 2)
+        web = next(n for n in g["nodes"] if n["id"] == f"ctr:{hid}:web")
+        self.assertEqual(web["stack"], f"stack:{hid}:app")

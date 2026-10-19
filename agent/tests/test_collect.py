@@ -17,6 +17,8 @@ INSPECT = {
         "Labels": {
             "com.docker.compose.project": "vault",
             "com.docker.compose.service": "web",
+            "com.docker.compose.project.working_dir": "/opt/stacks/vault",
+            "com.docker.compose.project.config_files": "/opt/stacks/vault/compose.yml,/opt/stacks/vault/override.yml",
             "traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
             "org.opencontainers.image.title": "vaultwarden",
         },
@@ -69,7 +71,9 @@ class CollectTests(unittest.TestCase):
     def test_record_shape(self):
         rec = container_record(INSPECT)
         self.assertEqual(rec["name"], "vaultwarden")
-        self.assertEqual(rec["compose"], {"project": "vault", "service": "web"})
+        self.assertEqual(rec["compose"]["project"], "vault")
+        self.assertEqual(rec["compose"]["working_dir"], "/opt/stacks/vault")
+        self.assertEqual(rec["compose"]["config_files"], ["/opt/stacks/vault/compose.yml", "/opt/stacks/vault/override.yml"])
         self.assertEqual(rec["health"], "healthy")
         # IPv4 + IPv6 bindings of the same port merge into one entry; unpublished port kept
         self.assertEqual([(p["private"], p["public"]) for p in rec["ports"]], [(80, 8082), (3012, None)])
@@ -81,6 +85,9 @@ class CollectTests(unittest.TestCase):
         rec = container_record(INSPECT, hide_paths=True)
         self.assertIsNone(rec["mounts"][0]["source"])
         self.assertEqual(rec["mounts"][1]["source"], "vw_cache")
+        self.assertIsNone(rec["compose"]["working_dir"])
+        self.assertEqual(rec["compose"]["config_files"], [])
+        self.assertEqual(rec["compose"]["project"], "vault")
 
     def test_snapshot_header(self):
         snap = collect(FakeClient(), hostname="override")

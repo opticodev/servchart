@@ -23,7 +23,11 @@
       "network_mode": "proxy",
       "compose": {
         "project": "proxy",
-        "service": "traefik"
+        "service": "traefik",
+        "working_dir": "/opt/stacks/proxy",
+        "config_files": [
+          "/opt/stacks/proxy/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "proxy",
@@ -76,7 +80,11 @@
       "network_mode": "proxy",
       "compose": {
         "project": "proxy",
-        "service": "authelia"
+        "service": "authelia",
+        "working_dir": "/opt/stacks/proxy",
+        "config_files": [
+          "/opt/stacks/proxy/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "proxy",
@@ -112,7 +120,11 @@
       "network_mode": "auth_internal",
       "compose": {
         "project": "proxy",
-        "service": "redis"
+        "service": "redis",
+        "working_dir": "/opt/stacks/proxy",
+        "config_files": [
+          "/opt/stacks/proxy/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "proxy",
@@ -141,7 +153,11 @@
       "network_mode": "proxy",
       "compose": {
         "project": "tunnel",
-        "service": "cloudflared"
+        "service": "cloudflared",
+        "working_dir": "/opt/stacks/tunnel",
+        "config_files": [
+          "/opt/stacks/tunnel/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "tunnel",
@@ -170,7 +186,11 @@
       "network_mode": "proxy",
       "compose": {
         "project": "monitoring",
-        "service": "kuma"
+        "service": "kuma",
+        "working_dir": "/opt/stacks/monitoring",
+        "config_files": [
+          "/opt/stacks/monitoring/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "monitoring",
@@ -206,7 +226,11 @@
       "network_mode": "host",
       "compose": {
         "project": "monitoring",
-        "service": "node-exporter"
+        "service": "node-exporter",
+        "working_dir": "/opt/stacks/monitoring",
+        "config_files": [
+          "/opt/stacks/monitoring/compose.yml"
+        ]
       },
       "labels": {
         "com.docker.compose.project": "monitoring",

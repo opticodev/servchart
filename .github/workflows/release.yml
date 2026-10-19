@@ -1,0 +1,82 @@
+# Push a tag like v0.2.0 to publish:
+#   - ghcr.io/opticodev/servchart-hub:<version> and :latest   (amd64 + arm64)
+#   - ghcr.io/opticodev/servchart-agent:<version> and :latest (amd64 + arm64)
+#   - the servchart-agent package on PyPI (trusted publishing, no API token)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the code version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          agent=$(python3 -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('agent/servchart_agent/__init__.py').read()).group(1))")
+          hub=$(python3 -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('hub/servchart/__init__.py').read()).group(1))")
+          echo "tag=$tag agent=$agent hub=$hub"
+          [ "$tag" = "$agent" ] && [ "$tag" = "$hub" ] || { echo "::error::Tag v$tag doesn't match __version__ (agent $agent, hub $hub)"; exit 1; }
+
+  images:
+    needs: check-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: servchart-hub
+            context: .
+          - name: servchart-agent
+            context: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  pypi:
+    needs: check-version
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/servchart-agent/
+    permissions:
+      id-token: write   # trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        working-directory: agent
+        run: |
+          pip install build
+          python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: agent/dist/

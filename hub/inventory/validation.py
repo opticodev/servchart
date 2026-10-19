@@ -43,7 +43,13 @@ def clean_report(data) -> dict:
             continue
         rec = _pick(c, CONTAINER_FIELDS)
         compose = c.get("compose") or {}
-        rec["compose"] = {"project": compose.get("project"), "service": compose.get("service")}
+        config_files = compose.get("config_files") or []
+        rec["compose"] = {
+            "project": compose.get("project"),
+            "service": compose.get("service"),
+            "working_dir": compose.get("working_dir") if isinstance(compose.get("working_dir"), str) else None,
+            "config_files": [str(f) for f in config_files][:20] if isinstance(config_files, list) else [],
+        }
         rec["labels"] = {
             str(k): ("[redacted]" if SECRET_KEY_RE.search(str(k)) else v)
             for k, v in (c.get("labels") or {}).items()

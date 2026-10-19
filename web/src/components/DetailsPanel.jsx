@@ -28,7 +28,8 @@ function ContainerDetails({ d }) {
         {d.health ? ` · ${d.health}` : ""}
       </Row>
       <Row label="Started">{d.started_at && d.state === "running" ? ago(d.started_at) : null}</Row>
-      <Row label="Compose">{d.compose?.project ? `${d.compose.project} / ${d.compose.service}` : null}</Row>
+      <Row label="Stack">{d.compose?.project ? `${d.compose.project} / ${d.compose.service}` : null}</Row>
+      <Row label="Folder">{d.compose?.working_dir ? <span className="mono">{d.compose.working_dir}</span> : null}</Row>
       <Row label="Restart">{d.restart_policy}</Row>
       <Row label="Network mode">{d.network_mode && !(d.networks || []).some((n) => n.name === d.network_mode) ? d.network_mode : null}</Row>
       <Row label="Networks">
@@ -108,6 +109,37 @@ function NetworkDetails({ d }) {
   );
 }
 
+function StackDetails({ d }) {
+  return (
+    <>
+      <h2>{d.standalone ? "Standalone containers" : d.name}</h2>
+      <p className="muted">{d.standalone ? "Containers not started by Docker Compose" : "Compose stack"}</p>
+      <Row label="Running">
+        {d.running} of {d.total}
+      </Row>
+      <Row label="Folder">{d.working_dir ? <span className="mono">{d.working_dir}</span> : d.standalone ? null : "unknown (older Compose or hidden by the agent)"}</Row>
+      <Row label="Compose files">
+        {(d.config_files || []).map((f) => (
+          <div key={f} className="mono">
+            {f}
+          </div>
+        ))}
+      </Row>
+      <Row label="Containers">
+        <ul className="stack-list">
+          {(d.containers || []).map((c) => (
+            <li key={c.name}>
+              <span className={`dot dot-${c.health === "unhealthy" ? "unhealthy" : c.state}`} />
+              <span className="mono">{c.service || c.name}</span>
+              {c.service && c.service !== c.name ? <span className="muted small">{c.name}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </Row>
+    </>
+  );
+}
+
 export default function DetailsPanel({ node, onClose, isStaff, onRotate }) {
   if (!node) return null;
   return (
@@ -118,6 +150,7 @@ export default function DetailsPanel({ node, onClose, isStaff, onRotate }) {
       {node.type === "container" && <ContainerDetails d={node.data} />}
       {node.type === "host" && <HostDetails d={node.data} isStaff={isStaff} onRotate={onRotate} />}
       {node.type === "network" && <NetworkDetails d={node.data} />}
+      {node.type === "stack" && <StackDetails d={node.data} />}
     </aside>
   );
 }

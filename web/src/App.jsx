@@ -34,6 +34,7 @@ function MapView() {
   const [query, setQuery] = useState("");
   const [hostFilter, setHostFilter] = useStored("servchart.hostFilter", "all");
   const [hideStopped, setHideStopped] = useStored("servchart.hideStopped", false);
+  const [groupStacks, setGroupStacks] = useStored("servchart.groupStacks", true);
   const [selectedId, setSelectedId] = useState(null);
   const [dialog, setDialog] = useState(null); // {mode:'add'} | {mode:'rotate', host}
   const [nodes, setNodes] = useState([]);
@@ -57,7 +58,7 @@ function MapView() {
     return () => clearInterval(t);
   }, [load]);
 
-  const laid = useMemo(() => (graph ? layoutGraph(graph, { hideStopped, query, hostFilter }) : { nodes: [], edges: [] }), [graph, hideStopped, query, hostFilter]);
+  const laid = useMemo(() => (graph ? layoutGraph(graph, { hideStopped, query, hostFilter, groupStacks }) : { nodes: [], edges: [] }), [graph, hideStopped, query, hostFilter, groupStacks]);
 
   useEffect(() => {
     setNodes(laid.nodes.map((n) => (dragged.current[n.id] ? { ...n, position: dragged.current[n.id] } : n)).map((n) => ({ ...n, selected: n.id === selectedId })));
@@ -71,8 +72,9 @@ function MapView() {
   }, [laid, fitView]);
 
   useEffect(() => {
-    fitted.current = false; // refit when the host filter changes
-  }, [hostFilter]);
+    fitted.current = false; // refit when the host filter or grouping changes
+    dragged.current = {}; // positions from the other layout no longer make sense
+  }, [hostFilter, groupStacks]);
 
   const onNodesChange = useCallback((changes) => {
     for (const c of changes) if (c.type === "position" && c.position) dragged.current[c.id] = c.position;
@@ -86,7 +88,7 @@ function MapView() {
 
   const selectedNode = useMemo(() => graph?.nodes.find((n) => n.id === selectedId) || null, [graph, selectedId]);
   const hosts = graph?.hosts || [];
-  const totals = hosts.reduce((a, h) => ({ c: a.c + h.counts.containers, r: a.r + h.counts.running }), { c: 0, r: 0 });
+  const totals = hosts.reduce((a, h) => ({ c: a.c + h.counts.containers, r: a.r + h.counts.running, s: a.s + (h.counts.stacks || 0) }), { c: 0, r: 0, s: 0 });
 
   return (
     <div className="app">
@@ -98,10 +100,10 @@ function MapView() {
           ServChart
         </div>
         <div className="stats muted">
-          {hosts.length} hosts · {totals.r}/{totals.c} containers running
+          {hosts.length} hosts · {totals.s} stacks · {totals.r}/{totals.c} containers running
         </div>
         <div className="toolbar">
-          <input className="search" type="search" placeholder="Search name, image, project, port…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input className="search" type="search" placeholder="Search name, image, stack, folder, port…" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={hostFilter} onChange={(e) => setHostFilter(e.target.value)} aria-label="Host">
             <option value="all">All hosts</option>
             {hosts.map((h) => (
@@ -110,6 +112,9 @@ function MapView() {
               </option>
             ))}
           </select>
+          <label className="toggle">
+            <input type="checkbox" checked={groupStacks} onChange={(e) => setGroupStacks(e.target.checked)} /> Group by stack
+          </label>
           <label className="toggle">
             <input type="checkbox" checked={hideStopped} onChange={(e) => setHideStopped(e.target.checked)} /> Hide stopped
           </label>

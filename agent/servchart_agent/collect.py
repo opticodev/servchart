@@ -85,6 +85,21 @@ def _networks(inspect: dict) -> list[dict]:
     return nets
 
 
+def compose_info(labels: dict, hide_paths: bool = False) -> dict:
+    """Which Compose stack a container belongs to, and the folder/files it was started from.
+
+    Docker Compose stamps every container with these labels, so no access to the
+    compose files themselves is needed. Portainer and Dockge stacks use Compose too.
+    """
+    config_files = labels.get("com.docker.compose.project.config_files") or ""
+    return {
+        "project": labels.get("com.docker.compose.project"),
+        "service": labels.get("com.docker.compose.service"),
+        "working_dir": None if hide_paths else labels.get("com.docker.compose.project.working_dir"),
+        "config_files": [] if hide_paths else [f for f in config_files.split(",") if f],
+    }
+
+
 def container_record(inspect: dict, hide_paths: bool = False) -> dict:
     """Convert a `docker inspect` document into a sanitized ServChart record.
 
@@ -105,10 +120,7 @@ def container_record(inspect: dict, hide_paths: bool = False) -> dict:
         "started_at": state.get("StartedAt"),
         "restart_policy": (host_config.get("RestartPolicy") or {}).get("Name") or None,
         "network_mode": host_config.get("NetworkMode"),
-        "compose": {
-            "project": labels.get("com.docker.compose.project"),
-            "service": labels.get("com.docker.compose.service"),
-        },
+        "compose": compose_info(labels, hide_paths),
         "labels": sanitize_labels(labels),
         "networks": _networks(inspect),
         "ports": _ports(inspect),
