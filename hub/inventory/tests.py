@@ -290,6 +290,7 @@ class SettingsApiTests(TestCase):
         r = self.api("post", "/api/v1/me/password", {"current_password": "pw-viewer-123", "new_password": "a-much-better-pass-42"}, user=self.viewer)
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(self.client.get("/api/v1/me").status_code, 200)  # still signed in
+        self.viewer.refresh_from_db()  # force_login with the stale object would carry the old password hash
         bad = self.api("post", "/api/v1/me/password", {"current_password": "wrong", "new_password": "another-good-pass-43"}, user=self.viewer)
         self.assertEqual(bad.status_code, 400)
 
