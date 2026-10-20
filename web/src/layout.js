@@ -34,6 +34,71 @@ function stackCols(n) {
   return 3;
 }
 
+// Arrange a group's containers in columns by how they talk: callers on the left, what they
+// call on the right (web -> app -> db), so lines run left to right instead of across the box.
+// Returns [{col,row}] per member, or null when the members don't talk to each other.
+export function layeredSlots(members, edges, maxCols, minCols = 1) {
+  const ids = members.map((m) => m.id);
+  const index = new Map(ids.map((id, i) => [id, i]));
+  const out = ids.map(() => new Set());
+  const inn = ids.map(() => new Set());
+  for (const e of edges) {
+    if (e.kind !== "flow" && e.kind !== "depends") continue;
+    const a = index.get(e.source);
+    const b = index.get(e.target);
+    if (a === undefined || b === undefined || a === b) continue;
+    out[a].add(b);
+    inn[b].add(a);
+  }
+  const linked = ids.map((_, i) => out[i].size + inn[i].size > 0);
+  if (!linked.some(Boolean)) return null;
+
+  // longest path from the callers; DFS ignores edges that would close a cycle
+  const layer = ids.map(() => 0);
+  const state = ids.map(() => 0); // 0 new, 1 on stack, 2 done
+  const order = [];
+  const visit = (i) => {
+    state[i] = 1;
+    for (const j of out[i]) if (state[j] === 0) visit(j);
+    state[i] = 2;
+    order.push(i);
+  };
+  ids.forEach((_, i) => state[i] === 0 && inn[i].size === 0 && visit(i));
+  ids.forEach((_, i) => state[i] === 0 && visit(i));
+  order.reverse(); // topological order (sources first)
+  const pos = new Map(order.map((i, k) => [i, k]));
+  for (const i of order) for (const j of out[i]) if (pos.get(j) > pos.get(i)) layer[j] = Math.max(layer[j], layer[i] + 1);
+
+  const layers = Math.max(...ids.map((_, i) => (linked[i] ? layer[i] : 0))) + 1;
+  const cols = Math.min(maxCols, Math.max(layers, minCols)); // extra columns take the loners
+  const colOf = (i) => (layers <= cols ? layer[i] : Math.floor((layer[i] * cols) / layers));
+  const columns = Array.from({ length: cols }, () => []);
+  ids.forEach((_, i) => linked[i] && columns[colOf(i)].push(i));
+
+  // order each column by the average row of its neighbours in the previous one (fewer crossings)
+  const rowOf = new Map();
+  columns.forEach((col) => col.forEach((i, r) => rowOf.set(i, r)));
+  for (let pass = 0; pass < 2; pass++) {
+    for (let c = 1; c < cols; c++) {
+      const score = (i) => {
+        const ns = [...inn[i], ...out[i]].filter((j) => colOf(j) < c && linked[j]).map((j) => rowOf.get(j));
+        return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : rowOf.get(i);
+      };
+      columns[c].sort((a, b) => score(a) - score(b));
+      columns[c].forEach((i, r) => rowOf.set(i, r));
+    }
+  }
+  // containers that don't talk to the others fill the shortest columns
+  ids.forEach((_, i) => {
+    if (linked[i]) return;
+    const c = columns.reduce((best, col, k) => (col.length < columns[best].length ? k : best), 0);
+    columns[c].push(i);
+  });
+  const slots = ids.map(() => null);
+  columns.forEach((col, c) => col.forEach((i, r) => (slots[i] = { col: c, row: r })));
+  return slots;
+}
+
 function matchesQuery(q, d, stack) {
   if (!q) return true;
   const hay = [
@@ -106,7 +171,14 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
     for (const g of groups) {
       const n = g.members.length;
       g.cols = g.node ? stackCols(n) : Math.max(3, Math.min(6, Math.ceil(Math.sqrt(n * 1.6))));
-      g.rows = Math.max(1, Math.ceil(n / g.cols));
+      g.slots = layeredSlots(g.members, graph.edges, g.node ? 4 : 6, g.cols);
+      if (g.slots) {
+        g.cols = Math.max(1, ...g.slots.map((p) => p.col + 1));
+        g.rows = Math.max(1, ...g.slots.map((p) => p.row + 1));
+      } else {
+        g.slots = g.members.map((_, i) => ({ col: i % g.cols, row: Math.floor(i / g.cols) }));
+        g.rows = Math.max(1, Math.ceil(n / g.cols));
+      }
       const innerPad = g.node ? stackPad : 0;
       g.nets = g.node ? localNets.get(g.node.id) || [] : [];
       const innerW = g.cols * C.w + (g.cols - 1) * gap;
@@ -205,7 +277,7 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
           type: "container",
           parentId,
           extent: "parent",
-          position: { x: ox + (i % g.cols) * (C.w + gap), y: oy + Math.floor(i / g.cols) * (C.h + gap) },
+          position: { x: ox + g.slots[i].col * (C.w + gap), y: oy + g.slots[i].row * (C.h + gap) },
           data: { ...m.data, dimmed: !matchesQuery(q, m.data, g.node?.data) },
           style: { width: C.w, height: C.h },
         });
@@ -246,6 +318,10 @@ export function filterEdges(edges, nodes, mode, selectedId) {
     return null;
   };
 
+  // a Compose dependency that is also seen as traffic: draw the traffic line only
+  const seen = new Set(edges.filter((e) => e.data.kind === "flow").map((e) => `${e.source}>${e.target}`));
+  if (mode !== "all") edges = edges.filter((e) => e.data.kind !== "depends" || !seen.has(`${e.source}>${e.target}`));
+
   if (mode !== "overview") {
     return edges.filter((e) => {
       const related = touches(e.source) || touches(e.target);
@@ -279,7 +355,8 @@ export function filterEdges(edges, nodes, mode, selectedId) {
     }
     if (!a || !b) continue;
     const key = `${a}->${b}`;
-    const m = merged.get(key) || { ports: new Set(), count: 0, links: 0, cross_host: sHost !== tHost };
+    const m = merged.get(key) || { ports: new Set(), count: 0, links: 0, cross_host: sHost !== tHost, agent: true };
+    m.agent = m.agent && !!e.data.agent;
     (e.data.ports || []).forEach((p) => m.ports.add(p));
     m.count += e.data.count || 0;
     m.links += 1;
@@ -293,7 +370,7 @@ export function filterEdges(edges, nodes, mode, selectedId) {
       target,
       type: "default",
       className: "edge-flow edge-agg",
-      data: { kind: "flow", ports: [...m.ports].sort((x, y) => x - y), count: m.count, links: m.links, cross_host: m.cross_host, aggregated: true },
+      data: { kind: "flow", ports: [...m.ports].sort((x, y) => x - y), count: m.count, links: m.links, cross_host: m.cross_host, aggregated: true, agent: m.agent },
     });
   }
   return out;

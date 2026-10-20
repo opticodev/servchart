@@ -49,6 +49,7 @@ function applyBranding(b) {
 }
 
 function portLabel(d) {
+  if (d.agent) return "reports to ServChart";
   const ports = d.ports || [];
   const shown = ports.slice(0, 3).map((p) => ":" + p).join(" ") + (ports.length > 3 ? ` +${ports.length - 3}` : "");
   return d.aggregated && d.links > 1 ? `${shown} · ${d.links} links` : shown;
@@ -131,7 +132,7 @@ function MapView() {
     return shown.map((e) => {
       const d = e.data;
       const active = selectedId && (e.source === selectedId || e.target === selectedId);
-      const cls = `${e.className}${d.cross_host ? " edge-cross" : ""}${active ? " is-active" : ""}`;
+      const cls = `${e.className}${d.cross_host ? " edge-cross" : ""}${d.agent ? " edge-agent" : ""}${active ? " is-active" : ""}`;
       if (d.kind === "flow") {
         return {
           ...e,
@@ -197,13 +198,18 @@ function MapView() {
           <label className="toggle">
             <input type="checkbox" checked={hideStopped} onChange={(e) => setHideStopped(e.target.checked)} /> Hide stopped
           </label>
+          <a className="btn btn-ghost" href="/report/" target="_blank" rel="noopener" title="Printable report (save as PDF from the print dialog)">
+            Report
+          </a>
           {me?.is_staff && (
             <button className="btn" onClick={() => setDialog({ mode: "add" })}>
               + Add host
             </button>
           )}
           <details className="menu">
-            <summary>{me?.username || "…"}</summary>
+            <summary title="Settings, reports and sign out">
+              <span aria-hidden>☰</span> {me?.username || "…"} <span aria-hidden className="caret">▾</span>
+            </summary>
             <div className="menu-items">
               <button type="button" onClick={(e) => { closeMenu(e); setView("settings"); }}>
                 Settings

@@ -780,3 +780,244 @@ class LocalCollectorTests(TestCase):
         from django.contrib import admin
 
         self.assertIn("is_local", admin.site._registry[Host].readonly_fields)
+
+
+# --- v0.4: server health, container resources, storage, backups, checks, history -----------
+
+from unittest import mock  # noqa: E402
+
+G = 1024**3
+
+
+def _v04_report():
+    r = copy.deepcopy(REPORT)
+    r["host"]["cpus"] = 4
+    r["host"]["health"] = {
+        "cpu_pct": 12.5, "load": [0.5, 0.4, 0.3], "uptime_s": 3600, "mem_total": 8 * G, "mem_available": 2 * G,
+        "swap_total": 0, "swap_free": 0, "disk_source": "host", "evil": "x",
+        "disks": [{"mount": "/", "fs": "ext4", "total": 100 * G, "used": 97 * G, "pct": 97.0}, {"mount": 5}],
+    }
+    r["containers"][0]["stats"] = {"cpu_pct": 4.0, "mem_used": 100, "mem_limit": 105, "secret": "x"}
+    r["containers"][0]["image_digests"] = ["nginx@sha256:" + "a" * 64, "bad digest"]
+    r["storage"] = {"images_bytes": 10 * G, "volumes_bytes": 2 * G, "volumes_unused": 1, "volumes": [{"name": "old", "size": G, "refs": 0}]}
+    r["backups"] = [
+        {"name": "kopia", "ok": True, "finished_at": "2000-01-01T00:00:00Z"},
+        {"name": "restic", "ok": False, "finished_at": timezone.now().isoformat(), "message": "locked"},
+        {"name": "fresh", "ok": True, "finished_at": timezone.now().isoformat()},
+        "junk",
+    ]
+    return r
+
+
+class V04ReportTests(AdminClientMixin, TestCase):
+    def setUp(self):
+        self.make_users()
+        self.host, self.token = Host.create_with_token("box")
+
+    def post(self, body):
+        return self.client.post("/api/v1/report", data=json.dumps(body), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+    def test_validation_keeps_known_fields_only(self):
+        self.assertEqual(self.post(_v04_report()).status_code, 200)
+        self.host.refresh_from_db()
+        snap = self.host.snapshot
+        h = snap["host"]["health"]
+        self.assertNotIn("evil", h)
+        self.assertEqual([d["mount"] for d in h["disks"]], ["/"])
+        c = snap["containers"][0]
+        self.assertNotIn("secret", c["stats"])
+        self.assertEqual(c["image_digests"], ["nginx@sha256:" + "a" * 64])
+        self.assertEqual(len(snap["backups"]), 3)
+        self.assertEqual(snap["storage"]["volumes"][0]["name"], "old")
+
+    def test_findings_and_backup_states(self):
+        self.post(_v04_report())
+        self.as_viewer()
+        rep = self.client.get("/api/v1/report.json").json()
+        codes = {(f["code"], f["target"]) for f in rep["findings"]}
+        self.assertIn(("disk-full", "box: /"), codes)
+        self.assertIn(("backup-overdue", "box: kopia"), codes)
+        self.assertIn(("backup-failed", "box: restic"), codes)
+        self.assertNotIn(("backup-overdue", "box: fresh"), codes)
+        self.assertIn(("container-memory", "box / web"), codes)
+        self.assertIn(("unused-volumes", "box"), codes)
+        self.assertEqual(rep["summary"]["backups_bad"], 2)
+        for kind in ("hosts", "backups", "certificates", "updates"):
+            self.assertEqual(self.client.get(f"/api/v1/report/{kind}.csv").status_code, 200)
+        page = self.client.get("/report/")
+        self.assertContains(page, "Server health")
+        self.assertContains(page, "Backups")
+
+    def test_history_is_sampled_and_served(self):
+        self.post(_v04_report())
+        self.post(_v04_report())  # within 5 minutes: no second sample
+        self.assertEqual(self.host.samples.count(), 1)
+        from .history import record
+
+        self.assertIsNotNone(record(self.host, _v04_report(), now=timezone.now() + timedelta(minutes=6)))
+        self.as_viewer()
+        h = self.client.get(f"/api/v1/hosts/{self.host.pk}/history?hours=24").json()
+        self.assertEqual(h["cpu"], [12.5, 12.5])
+        self.assertEqual(h["disks"]["/"], [97.0, 97.0])
+        self.assertEqual(h["containers"]["web"]["mem"], [100, 100])
+
+    def test_changes_since_yesterday(self):
+        from .history import changes
+        from .models import Sample
+
+        Sample.objects.create(host=self.host, created_at=timezone.now() - timedelta(hours=24), data={"inv": {"web": "nginx:1.26", "gone": "x"}})
+        snap = _v04_report()
+        snap["containers"][0]["image"] = "nginx:1.27"
+        ch = changes(self.host, snap)
+        self.assertEqual(ch["removed"], ["gone"])
+        self.assertIn("netdata", ch["added"])
+        self.assertEqual(ch["image_changed"], [{"name": "web", "from": "nginx:1.26", "to": "nginx:1.27"}])
+
+    def test_purge(self):
+        from .history import purge
+        from .models import Sample
+
+        Sample.objects.create(host=self.host, created_at=timezone.now() - timedelta(days=30), data={})
+        Sample.objects.create(host=self.host, created_at=timezone.now(), data={})
+        self.assertEqual(purge(), 1)
+
+
+class CheckTests(AdminClientMixin, TestCase):
+    def setUp(self):
+        self.make_users()
+
+    def test_parse_ref(self):
+        from .checks import parse_ref
+
+        self.assertEqual(parse_ref("nginx"), ("registry-1.docker.io", "library/nginx", "latest"))
+        self.assertEqual(parse_ref("frappe/erpnext:v16.37.0"), ("registry-1.docker.io", "frappe/erpnext", "v16.37.0"))
+        self.assertEqual(parse_ref("ghcr.io/org/app:1.2"), ("ghcr.io", "org/app", "1.2"))
+        self.assertEqual(parse_ref("localhost:5000/app"), ("localhost:5000", "app", "latest"))
+        self.assertIsNone(parse_ref("sha256:" + "a" * 64))
+
+    def test_newer_tag(self):
+        from .checks import newer_tag
+
+        tags = ["1.27.2", "1.27.4", "1.28.0", "1.28.0-alpine", "v1.29.0", "latest", "1.27", "2.0.0-rc1"]
+        self.assertEqual(newer_tag("1.27.2", tags), "1.28.0")
+        self.assertEqual(newer_tag("1.27.4-alpine", tags + ["1.27.5-alpine"]), "1.27.5-alpine")
+        self.assertEqual(newer_tag("v1.28.0", tags), "v1.29.0")
+        self.assertIsNone(newer_tag("latest", tags))
+        self.assertIsNone(newer_tag("1.28.0", ["1.27.0"]))
+
+    def test_image_status_and_run(self):
+        from .checks import image_status, run_image_checks
+        from .models import ImageCheck
+
+        host, token = Host.create_with_token("box")
+        r = _v04_report()
+        r["containers"][0]["image"] = "nginx:1.27.2"
+        self.client.post("/api/v1/report", data=json.dumps(r), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}")
+        with mock.patch("inventory.checks.check_image", return_value={"latest_digest": "sha256:" + "b" * 64, "newer_tag": "1.28.0"}):
+            self.assertEqual(run_image_checks(force=True), 1)
+        checks = {c.ref: c for c in ImageCheck.objects.all()}
+        st = image_status({"image": "nginx:1.27.2", "image_digests": ["nginx@sha256:" + "a" * 64]}, checks)
+        self.assertEqual((st["state"], st["newer_tag"]), ("update", "1.28.0"))
+        same = image_status({"image": "nginx:1.27.2", "image_digests": ["nginx@sha256:" + "b" * 64]}, checks)
+        self.assertEqual(same["state"], "current")
+        self.as_viewer()
+        graph = self.client.get("/api/v1/graph").json()
+        web = next(n for n in graph["nodes"] if n["id"].endswith(":web"))
+        self.assertEqual(web["data"]["image_update"]["state"], "update")
+
+    def test_cert_api(self):
+        from datetime import datetime, timezone as dt_tz
+
+        fake = {"expires_at": datetime(2030, 1, 1, tzinfo=dt_tz.utc), "issuer": "Test CA", "error": ""}
+        self.as_viewer()
+        self.assertEqual(self.client.post("/api/v1/checks/certs", data=json.dumps({"hostname": "example.com"}), content_type="application/json").status_code, 403)
+        self.as_admin()
+        with mock.patch("inventory.checks.fetch_cert", return_value=fake):
+            r = self.client.post("/api/v1/checks/certs", data=json.dumps({"hostname": "https://Example.com:8443/path"}), content_type="application/json")
+            self.assertEqual(r.status_code, 201, r.content)
+            self.assertEqual((r.json()["hostname"], r.json()["port"], r.json()["issuer"]), ("example.com", 8443, "Test CA"))
+            dup = self.client.post("/api/v1/checks/certs", data=json.dumps({"hostname": "example.com:8443"}), content_type="application/json")
+            self.assertEqual(dup.status_code, 400)
+        bad = self.client.post("/api/v1/checks/certs", data=json.dumps({"hostname": "not a host; rm -rf"}), content_type="application/json")
+        self.assertEqual(bad.status_code, 400)
+        pk = r.json()["id"]
+        self.assertEqual(self.client.delete(f"/api/v1/checks/certs/{pk}").status_code, 204)
+
+    def test_expiring_cert_is_a_finding(self):
+        from datetime import datetime, timezone as dt_tz
+
+        from .models import CertCheck
+
+        CertCheck.objects.create(hostname="soon.example.com", port=443, checked_at=timezone.now(), expires_at=timezone.now() + timedelta(days=3))
+        CertCheck.objects.create(hostname="bad.example.com", port=443, checked_at=timezone.now(), error="Not trusted: self-signed")
+        CertCheck.objects.create(hostname="fine.example.com", port=443, checked_at=timezone.now(), expires_at=datetime(2030, 1, 1, tzinfo=dt_tz.utc))
+        self.as_viewer()
+        rep = self.client.get("/api/v1/report.json").json()
+        codes = {(f["code"], f["target"]) for f in rep["findings"]}
+        self.assertIn(("cert-expiring", "soon.example.com"), codes)
+        self.assertIn(("cert-error", "bad.example.com"), codes)
+        self.assertFalse(any(t == "fine.example.com" for _, t in codes))
+
+    def test_background_checks_pace(self):
+        from .management.commands.report_scheduler import background_checks
+
+        state = {}
+        with mock.patch("inventory.checks.run_cert_checks") as certs, mock.patch("inventory.checks.run_image_checks") as images, mock.patch("inventory.history.purge") as purge:
+            background_checks(state, now=1000)
+            background_checks(state, now=1100)
+        self.assertEqual((certs.call_count, images.call_count, purge.call_count), (1, 1, 1))
+
+
+class PublicAddressTests(AdminClientMixin, TestCase):
+    """A cloud VM reaching home servers through the router's public IP and port forwards."""
+
+    def setUp(self):
+        self.make_users()
+
+    def _host(self, name, containers, host_extra=None, conns=None, local=False):
+        if local:
+            from inventory.models import hash_token
+
+            h = Host.objects.create(name=name, is_local=True, token_hash=hash_token(name), token_hint="local")
+        else:
+            h, _ = Host.create_with_token(name)
+        h.snapshot = {"host": {"ips": [], **(host_extra or {})}, "containers": containers, "networks": [], "host_connections": conns or []}
+        h.last_seen = timezone.now()
+        h.save()
+        return h
+
+    def test_connection_to_public_ip_resolves_by_published_port(self):
+        from .graph import build_graph
+        from .models import SiteSettings
+
+        site = SiteSettings.load()
+        site.public_addresses = "203.0.113.7"
+        site.save()
+        home = self._host("hestia", [{"name": "headscale", "ports": [{"private": 8080, "public": 8843, "ips": ["192.168.0.15"]}], "networks": []}])
+        self._host("cloud", [{"name": "tailscale", "networks": [], "connections": [{"ip": "203.0.113.7", "port": 8843, "count": 1}, {"ip": "203.0.113.7", "port": 9999, "count": 1}]}])
+        from . import addresses
+
+        addresses._cache["key"] = None  # forget the cached resolution
+        g = build_graph()
+        flows = [e for e in g["edges"] if e["kind"] == "flow"]
+        self.assertEqual([(e["source"].split(":")[-1], e["target"]) for e in flows], [("tailscale", f"ctr:{home.pk}:headscale")])
+
+    def test_agents_are_told_the_addresses(self):
+        self.as_admin()
+        bad = self.client.patch("/api/v1/addresses", data=json.dumps({"addresses": "not an address!"}), content_type="application/json")
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.patch("/api/v1/addresses", data=json.dumps({"addresses": "203.0.113.7\n203.0.113.7"}), content_type="application/json")
+        self.assertEqual(ok.json()["addresses"], ["203.0.113.7"])
+        host, token = Host.create_with_token("cloud")
+        self.client.logout()
+        r = self.client.post("/api/v1/report", data=json.dumps(REPORT), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(r.json()["observe_ips"], ["203.0.113.7"])
+
+    def test_agent_reporting_to_the_hub_gets_a_line(self):
+        from .graph import build_graph
+
+        hub = self._host("harbor", [{"name": "servchart-hub", "image": "opticodev/servchart-hub:0.4.0", "networks": []}], local=True)
+        cloud = self._host("namdje", [{"name": "servchart-agent", "image": "opticodev/servchart-agent:0.4.0", "networks": []}])
+        g = build_graph()
+        agent_edges = [e for e in g["edges"] if e.get("agent")]
+        self.assertEqual([(e["source"], e["target"]) for e in agent_edges], [(f"ctr:{cloud.pk}:servchart-agent", f"ctr:{hub.pk}:servchart-hub")])

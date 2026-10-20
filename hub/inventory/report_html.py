@@ -38,6 +38,100 @@ def _specs(h: dict) -> str:
     return " \u00b7 ".join(b for b in bits if b)
 
 
+def _bar(pct) -> str:
+    if pct is None:
+        return "-"
+    color = "#dc2626" if pct >= 95 else "#d97706" if pct >= 85 else "#16a34a"
+    return (f'<span class="bar"><span style="width:{min(100, max(0, pct)):.0f}%;background:{color}"></span></span> '
+            f'<span class="mono">{pct:.0f}%</span>')
+
+
+def _dur(seconds) -> str:
+    if not seconds:
+        return "-"
+    d, h = int(seconds // 86400), int(seconds % 86400 // 3600)
+    return f"{d} d {h} h" if d else f"{h} h"
+
+
+def _size(n) -> str:
+    if n is None:
+        return "-"
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
+    return "-"
+
+
+STATE_COLORS = {"ok": "#16a34a", "current": "#16a34a", "overdue": "#d97706", "update": "#2563eb", "failed": "#dc2626", "unknown": "#64748b"}
+
+
+def _pill(state: str) -> str:
+    return f'<span class="sev" style="background:{STATE_COLORS.get(state, "#64748b")}">{_e(state)}</span>'
+
+
+def _health_sections(report: dict) -> str:
+    out = []
+    if report.get("health"):
+        out.append("<h2>Server health</h2>")
+        rows = []
+        for r in report["health"]:
+            disks = "<br>".join(f'<span class="mono">{_e(d["mount"])}</span> {_bar(d.get("pct"))} <span class="muted">{_e(_size(d["total"] - d["used"]))} free</span>' for d in r["disks"]) or "-"
+            if r.get("disk_source") == "docker":
+                disks += '<br><span class="muted">Docker data only; mount the host root for all disks</span>'
+            load = (r.get("load") or [None])[0]
+            st = r.get("storage") or {}
+            docker = f'{_e(_size(st.get("images_bytes")))} images · {_e(_size(st.get("volumes_bytes")))} volumes' if st else "-"
+            rows.append(
+                f'<tr><td><strong>{_e(r["host"])}</strong><br><span class="muted">up {_e(_dur(r.get("uptime_s")))}</span></td>'
+                f'<td>{_bar(r.get("cpu_pct"))}<br><span class="muted">load {_e(f"{load:.2f}" if load is not None else "-")}{" / " + _e(r["cpus"]) + " CPU" if r.get("cpus") else ""}</span></td>'
+                f'<td>{_bar(r.get("mem_pct"))}<br><span class="muted">of {_e(_size(r.get("mem_total")))}</span></td>'
+                f"<td>{disks}</td><td>{docker}</td></tr>"
+            )
+        out.append(f"<table><thead><tr><th>Server</th><th>CPU</th><th>Memory</th><th>Disks</th><th>Docker</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
+        if report.get("top_containers"):
+            rows = ""
+            for t in report["top_containers"]:
+                cpu = f"{t['cpu_pct']:.1f}%" if t.get("cpu_pct") is not None else "-"
+                rows += f'<tr><td class="mono">{_e(t["host"])} / {_e(t["container"])}</td><td>{_e(_size(t["mem_used"]))}</td><td>{_e(cpu)}</td></tr>'
+            out.append(f"<h3>Biggest containers (memory)</h3><table><thead><tr><th>Container</th><th>Memory</th><th>CPU</th></tr></thead><tbody>{rows}</tbody></table>")
+    if report.get("backups"):
+        out.append("<h2>Backups</h2>")
+        rows = ""
+        for b in report["backups"]:
+            ago = f"{b['age_hours']:.0f} h ago" if b.get("age_hours") is not None else ""
+            rows += (
+                f'<tr><td>{_e(b["host"])}</td><td class="mono">{_e(b["name"])}</td><td>{_pill(b["state"])}</td>'
+                f'<td>{_e(_when(b.get("finished_at")))}<br><span class="muted">{_e(ago)}</span></td><td>{_e(b.get("message") or "")}</td></tr>'
+            )
+        out.append(f"<table><thead><tr><th>Server</th><th>Job</th><th>State</th><th>Last run</th><th>Note</th></tr></thead><tbody>{rows}</tbody></table>")
+    if report.get("certificates"):
+        out.append("<h2>Certificates</h2>")
+        rows = []
+        for c in report["certificates"]:
+            days = c.get("days_left")
+            state = "failed" if c.get("error") or (days is not None and days < 7) else "overdue" if days is not None and days < 14 else "ok"
+            label = c["error"] or (f"{days} days left" if days is not None else "not checked yet")
+            rows.append(f'<tr><td class="mono">{_e(c["hostname"])}{":" + _e(c["port"]) if c["port"] != 443 else ""}</td><td>{_pill(state)}</td><td>{_e(label)}</td><td>{_e(_when(c.get("expires_at")))}</td><td>{_e(c.get("issuer") or "")}</td></tr>')
+        out.append(f"<table><thead><tr><th>Endpoint</th><th>State</th><th>Status</th><th>Expires</th><th>Issuer</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
+    if report.get("updates"):
+        out.append("<h2>Image updates</h2>")
+        rows = "".join(
+            f'<tr><td class="mono">{_e(u["host"])} / {_e(u["container"])}</td><td class="mono">{_e(u["image"])}</td><td>{_pill(u["state"])}</td><td class="mono">{_e(u.get("newer_tag") or "")}</td></tr>'
+            for u in report["updates"]
+        )
+        out.append(f"<table><thead><tr><th>Container</th><th>Image</th><th>Tag</th><th>Newer version</th></tr></thead><tbody>{rows}</tbody></table>")
+        out.append('<p class="muted">"update": the registry now has a different image under this tag (pull and recreate). "Newer version": a higher version tag exists.</p>')
+    if report.get("changes"):
+        out.append("<h2>What changed (last 24 h)</h2>")
+        for host, ch in report["changes"].items():
+            items = [f"added <span class=\"mono\">{_e(n)}</span>" for n in ch["added"]]
+            items += [f"removed <span class=\"mono\">{_e(n)}</span>" for n in ch["removed"]]
+            items += [f"<span class=\"mono\">{_e(x['name'])}</span>: {_e(x['from'])} → {_e(x['to'])}" for x in ch["image_changed"]]
+            out.append(f"<h3>{_e(host)}</h3><ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>")
+    return "".join(out)
+
+
 def logo_data_uri(data: bytes | None, ctype: str | None) -> str | None:
     if not data or not ctype:
         return None
@@ -76,6 +170,8 @@ td.mono, .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; f
 .sev {{ display: inline-block; color: #fff; border-radius: 4px; padding: 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; }}
 .state-running {{ color: #16a34a; }} .state-exited, .state-dead {{ color: #dc2626; }} .state-restarting {{ color: #d97706; }}
 .muted {{ color: #64748b; }}
+.bar {{ display: inline-block; width: 70px; height: 7px; background: #e2e8f0; border-radius: 4px; overflow: hidden; vertical-align: middle; }}
+.bar span {{ display: block; height: 100%; }}
 .host {{ border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; break-inside: avoid-page; }}
 .host-head {{ display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; }}
 .host-head strong {{ font-size: 15px; }}
@@ -109,6 +205,16 @@ footer {{ margin-top: 36px; color: #94a3b8; font-size: 11px; border-top: 1px sol
         (s["connections"], "observed links"),
         (f["high"] + f["medium"], "findings to review"),
     ]
+    if s.get("disks_warn") is not None and report.get("health"):
+        tiles.append((s["disks_warn"], "disks filling up"))
+    if s.get("backups"):
+        tiles.append((f"{s['backups'] - s['backups_bad']}/{s['backups']}", "backups on time"))
+    if s.get("certs"):
+        tiles.append((s["certs_bad"], "certificate problems"))
+    if s.get("updates"):
+        tiles.append((s["updates"], "image updates"))
+    tiles += [
+    ]
     parts.append('<div class="tiles">' + "".join(f'<div class="tile"><b>{_e(v)}</b><span>{_e(k)}</span></div>' for v, k in tiles) + "</div>")
 
     parts.append("<h2>Findings</h2>")
@@ -122,6 +228,7 @@ footer {{ margin-top: 36px; color: #94a3b8; font-size: 11px; border-top: 1px sol
     else:
         parts.append('<p class="empty">Nothing to report.</p>')
 
+    parts.append(_health_sections(report))
     parts.append("<h2>Inventory</h2>")
     if not report["inventory"]:
         parts.append('<p class="empty">No hosts yet.</p>')

@@ -42,6 +42,12 @@ def store_report(host: Host, report: dict) -> None:
     host.agent_version = report.get("agent_version", "")
     host.last_seen = timezone.now()
     host.save(update_fields=["snapshot", "agent_version", "last_seen"])
+    try:
+        from .history import record
+
+        record(host, report)
+    except Exception:  # history must never make a report fail
+        log.exception("could not record history for %s", host.name)
 
 
 class IsAgent(permissions.BasePermission):
@@ -61,7 +67,17 @@ def report(request):
     # where the report came from: lets other hosts' connections to this address resolve to it
     cleaned["seen_from"] = request.META.get("REMOTE_ADDR")
     store_report(request.auth, cleaned)
-    return Response({"ok": True, "host": request.auth.name, "containers": len(cleaned["containers"])})
+    from .addresses import public_ips
+
+    return Response(
+        {
+            "ok": True,
+            "host": request.auth.name,
+            "containers": len(cleaned["containers"]),
+            # your public addresses: the agent reports connections to these even though they're public
+            "observe_ips": sorted(public_ips()),
+        }
+    )
 
 
 @api_view(["GET"])
@@ -74,6 +90,7 @@ def _install_command(request, token: str) -> str:
     return (
         "docker run -d --name servchart-agent --restart unless-stopped --pid host \\\n"
         "  -v /var/run/docker.sock:/var/run/docker.sock:ro \\\n"
+        "  -v /:/host:ro,rslave -e SERVCHART_HOST_ROOT=/host \\\n"
         "  -e SERVCHART_OBSERVE_CONNECTIONS=1 \\\n"
         f"  -e SERVCHART_HUB={hub} \\\n"
         f"  -e SERVCHART_TOKEN={token} \\\n"

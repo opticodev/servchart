@@ -45,6 +45,97 @@ def clean_connections(value, limit=200):
     return out
 
 
+def _num(value, lo=0, hi=2**63):
+    """A finite number in range, else None (bools are not numbers here)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if value != value or not lo <= value <= hi:  # NaN or out of range
+        return None
+    return value
+
+
+def _str(value, limit=255):
+    return value[:limit] if isinstance(value, str) else None
+
+
+DIGEST_RE = re.compile(r"^[\w./:-]{1,255}@sha256:[0-9a-f]{64}$")
+
+
+def clean_health(h) -> dict | None:
+    if not isinstance(h, dict):
+        return None
+    load = h.get("load")
+    disks = []
+    for d in h.get("disks") if isinstance(h.get("disks"), list) else []:
+        if not isinstance(d, dict) or not _str(d.get("mount")):
+            continue
+        total, used = _num(d.get("total")), _num(d.get("used"))
+        if not total:
+            continue
+        disks.append({"mount": _str(d["mount"], 255), "fs": _str(d.get("fs"), 32), "total": total, "used": used or 0, "pct": _num(d.get("pct"), 0, 100)})
+        if len(disks) >= 30:
+            break
+    return {
+        "cpu_pct": _num(h.get("cpu_pct"), 0, 100),
+        "load": [v for v in (_num(x, 0, 10**6) for x in load[:3]) if v is not None] if isinstance(load, list) else None,
+        "uptime_s": _num(h.get("uptime_s")),
+        "mem_total": _num(h.get("mem_total")),
+        "mem_available": _num(h.get("mem_available")),
+        "swap_total": _num(h.get("swap_total")),
+        "swap_free": _num(h.get("swap_free")),
+        "disks": disks,
+        "disk_source": h.get("disk_source") if h.get("disk_source") in ("host", "docker", "none") else "none",
+    }
+
+
+STAT_FIELDS = ("mem_used", "mem_limit", "pids", "net_rx", "net_tx", "blk_read", "blk_write")
+
+
+def clean_stats(st) -> dict | None:
+    if not isinstance(st, dict):
+        return None
+    out = {"cpu_pct": _num(st.get("cpu_pct"), 0, 100 * 1024)}
+    for f in STAT_FIELDS:
+        out[f] = _num(st.get(f))
+    return out
+
+
+def clean_storage(s) -> dict | None:
+    if not isinstance(s, dict):
+        return None
+    vols = []
+    for v in s.get("volumes") if isinstance(s.get("volumes"), list) else []:
+        if isinstance(v, dict) and _str(v.get("name")):
+            vols.append({"name": _str(v["name"]), "size": _num(v.get("size")), "refs": _num(v.get("refs"), 0, 10**6)})
+        if len(vols) >= 500:
+            break
+    out = {k: _num(s.get(k)) for k in ("images_bytes", "images_count", "images_unused", "containers_rw_bytes", "volumes_bytes", "volumes_count", "volumes_unused", "build_cache_bytes", "measured_at")}
+    out["volumes"] = vols
+    return out
+
+
+def clean_backups(items) -> list | None:
+    if not isinstance(items, list):
+        return None
+    out = []
+    for b in items:
+        if not isinstance(b, dict) or not _str(b.get("name")):
+            continue
+        out.append(
+            {
+                "name": _str(b["name"], 64),
+                "ok": bool(b.get("ok")),
+                "finished_at": _str(b.get("finished_at"), 40),
+                "max_age_hours": _num(b.get("max_age_hours"), 0, 24 * 366),
+                "message": _str(b.get("message"), 300) or "",
+                "size_bytes": _num(b.get("size_bytes")),
+            }
+        )
+        if len(out) >= 50:
+            break
+    return out
+
+
 def _pick(obj, fields):
     return {f: obj.get(f) for f in fields if f in obj}
 
@@ -109,6 +200,11 @@ def clean_report(data) -> dict:
         if isinstance(c.get("listening"), list):
             rec["listening"] = sorted({p for p in c["listening"] if _int(p, 1)})[:100]
         rec["restart_count"] = _int(c.get("restart_count"), 0, 10**9) or 0
+        if isinstance(c.get("image_digests"), list):
+            rec["image_digests"] = [d for d in c["image_digests"] if isinstance(d, str) and DIGEST_RE.match(d)][:10]
+        stats = clean_stats(c.get("stats"))
+        if stats:
+            rec["stats"] = stats
         containers.append(rec)
 
     networks = [
@@ -117,7 +213,7 @@ def clean_report(data) -> dict:
         if isinstance(n, dict) and n.get("name")
     ]
 
-    return {
+    out = {
         "schema": data["schema"],
         "agent_version": str(data.get("agent_version") or "")[:32],
         "collected_at": data.get("collected_at"),
@@ -126,6 +222,13 @@ def clean_report(data) -> dict:
         "containers": containers,
         "networks": networks,
     }
+    storage = clean_storage(data.get("storage"))
+    if storage is not None:
+        out["storage"] = storage
+    backups = clean_backups(data.get("backups"))
+    if backups is not None:
+        out["backups"] = backups
+    return out
 
 
 def clean_host(host: dict) -> dict:
@@ -134,4 +237,7 @@ def clean_host(host: dict) -> dict:
     out["ips"] = sorted({ip for ip in (_ip(i) for i in ips) if ip})[:50] if isinstance(ips, list) else []
     out["observe"] = host.get("observe") if host.get("observe") in ("on", "off", "unavailable") else "off"
     out["logs"] = "on" if host.get("logs") == "on" else "off"
+    health = clean_health(host.get("health"))
+    if health:
+        out["health"] = health
     return out

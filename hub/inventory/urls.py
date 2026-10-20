@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import branding, logs_api, reports_api, settings_api, views
+from . import branding, checks_api, logs_api, reports_api, settings_api, views
 
 urlpatterns = [
     path("report", views.report, name="agent-report"),
@@ -10,7 +10,12 @@ urlpatterns = [
     path("hosts", views.hosts, name="hosts"),
     path("hosts/<int:pk>/rotate-token", views.rotate_token, name="rotate-token"),
     path("hosts/<int:pk>/logs", logs_api.request_logs, name="host-logs"),
+    path("hosts/<int:pk>/history", checks_api.host_history, name="host-history"),
     path("hosts/<int:pk>", settings_api.host_detail, name="host-detail"),
+    path("checks/certs", checks_api.certs, name="check-certs"),
+    path("checks/certs/<int:pk>", checks_api.cert_detail, name="check-cert-detail"),
+    path("checks/images", checks_api.images, name="check-images"),
+    path("addresses", checks_api.public_addresses, name="public-addresses"),
     path("logs/<uuid:req_id>", logs_api.log_result, name="log-result"),
     path("users", settings_api.users, name="users"),
     path("users/<int:pk>", settings_api.user_detail, name="user-detail"),

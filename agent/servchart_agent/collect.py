@@ -15,6 +15,7 @@ import re
 from datetime import datetime, timezone
 
 from . import SCHEMA_VERSION, __version__
+from . import backups, stats, storage, system
 from . import connections as conn
 from .docker_api import DockerClient
 
@@ -112,6 +113,26 @@ def parse_depends_on(value: str | None) -> list[str]:
     return services
 
 
+_digests: dict[str, list[str]] = {}  # image id -> RepoDigests
+
+
+def image_digests(client, image_id: str | None) -> list[str]:
+    """Registry digests of an image ("repo@sha256:..."), so the hub can tell if its tag moved."""
+    if not image_id:
+        return []
+    if image_id not in _digests:
+        try:
+            doc = client.get(f"/images/{image_id}/json")
+            _digests[image_id] = [d for d in (doc.get("RepoDigests") or []) if isinstance(d, str)][:10]
+        except Exception:
+            return []
+    return _digests[image_id]
+
+
+def _flag(name: str, default: str = "1") -> bool:
+    return os.environ.get(name, default).lower() in ("1", "true", "yes", "on")
+
+
 def container_record(inspect: dict, hide_paths: bool = False) -> dict:
     """Convert a `docker inspect` document into a sanitized ServChart record.
 
@@ -171,6 +192,13 @@ def collect(client: DockerClient | None = None, hostname: str | None = None) -> 
         except Exception:  # container vanished between list and inspect
             continue
     containers = [container_record(i, hide_paths) for i in inspected]
+    for rec, doc in zip(containers, inspected):
+        rec["image_digests"] = image_digests(client, doc.get("Image"))
+    if _flag("SERVCHART_STATS"):
+        by_id = stats.collect(client, [d.get("Id") for d in inspected if (d.get("State") or {}).get("Running")])
+        for rec, doc in zip(containers, inspected):
+            if doc.get("Id") in by_id:
+                rec["stats"] = by_id[doc["Id"]]
     networks = [network_record(n) for n in client.networks()]
 
     host = {
@@ -185,6 +213,8 @@ def collect(client: DockerClient | None = None, hostname: str | None = None) -> 
         # on-demand log viewing, opt-in per host (SERVCHART_ALLOW_LOGS=1)
         "logs": "on" if os.environ.get("SERVCHART_ALLOW_LOGS", "0").lower() in ("1", "true", "yes", "on") else "off",
     }
+    if _flag("SERVCHART_HEALTH"):
+        host["health"] = system.health(info.get("DockerRootDir"))
     snapshot = {
         "schema": SCHEMA_VERSION,
         "agent_version": __version__,
@@ -193,6 +223,13 @@ def collect(client: DockerClient | None = None, hostname: str | None = None) -> 
         "containers": containers,
         "networks": networks,
     }
+
+    docker_disk = storage.collect(client)
+    if docker_disk is not None:
+        snapshot["storage"] = docker_disk
+    backup_status = backups.collect()
+    if backup_status is not None:
+        snapshot["backups"] = backup_status
 
     # The host's own addresses let the hub resolve other hosts' connections to this one.
     # Readable only when we see the host's /proc (native, or --pid host); else SERVCHART_HOST_IPS.

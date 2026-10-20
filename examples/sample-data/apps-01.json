@@ -20,7 +20,30 @@
     "ips": [
       "10.20.0.3"
     ],
-    "observe": "on"
+    "observe": "on",
+    "health": {
+      "cpu_pct": 10,
+      "load": [
+        1.6,
+        1.2,
+        0.8
+      ],
+      "uptime_s": 2419200,
+      "mem_total": 34359738368,
+      "mem_available": 17179869184,
+      "swap_total": 0,
+      "swap_free": 0,
+      "disks": [
+        {
+          "mount": "/",
+          "fs": "ext4",
+          "total": 214748364800,
+          "used": 161061273600,
+          "pct": 75.0
+        }
+      ],
+      "disk_source": "host"
+    }
   },
   "containers": [
     {
@@ -86,7 +109,12 @@
           "port": 6379,
           "count": 4
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 10.4,
+        "mem_used": 255852544,
+        "mem_limit": null
+      }
     },
     {
       "id": "00002ffa5c7f",
@@ -127,7 +155,12 @@
           "destination": "/var/lib/postgresql/data",
           "rw": true
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 11.1,
+        "mem_used": 263192576,
+        "mem_limit": null
+      }
     },
     {
       "id": "0000ab103605",
@@ -161,7 +194,12 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 2.1,
+        "mem_used": 168820736,
+        "mem_limit": null
+      }
     },
     {
       "id": "0000dad9ea69",
@@ -221,7 +259,12 @@
           "port": 5432,
           "count": 5
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 0.9,
+        "mem_used": 30408704,
+        "mem_limit": null
+      }
     },
     {
       "id": "000071612315",
@@ -255,7 +298,12 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 10.1,
+        "mem_used": 630194176,
+        "mem_limit": null
+      }
     },
     {
       "id": "00001f12d8b8",
@@ -334,7 +382,12 @@
           ]
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 10.2,
+        "mem_used": 631242752,
+        "mem_limit": null
+      }
     },
     {
       "id": "00003ff0d1ac",
@@ -370,7 +423,12 @@
           ]
         }
       ],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 8.4,
+        "mem_used": 360710144,
+        "mem_limit": null
+      }
     },
     {
       "id": "000052cc7728",
@@ -397,7 +455,12 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 4.0,
+        "mem_used": 188743680,
+        "mem_limit": null
+      }
     }
   ],
   "networks": [
@@ -441,5 +504,25 @@
         "172.24.0.0/16"
       ]
     }
-  ]
+  ],
+  "backups": [
+    {
+      "name": "kopia",
+      "ok": true,
+      "finished_at": "2026-10-19T03:00:00+00:00",
+      "message": "nightly",
+      "max_age_hours": 26
+    }
+  ],
+  "storage": {
+    "images_bytes": 9663676416,
+    "images_count": 14,
+    "images_unused": 2,
+    "containers_rw_bytes": 314572800,
+    "volumes_bytes": 4294967296,
+    "volumes_count": 6,
+    "volumes_unused": 1,
+    "build_cache_bytes": 0,
+    "volumes": []
+  }
 }

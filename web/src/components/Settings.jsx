@@ -149,7 +149,45 @@ function HostsTab({ me, onRotate, onAdd }) {
           </tbody>
         </table>
       </div>
+      {me.is_staff && <PublicAddresses />}
     </section>
+  );
+}
+
+function PublicAddresses() {
+  const [text, setText] = useState("");
+  const [resolved, setResolved] = useState([]);
+  const [notice, setNotice] = useState(null);
+  const load = useCallback(async () => {
+    const r = await api.publicAddresses();
+    setText(r.addresses.join("\n"));
+    setResolved(r.resolved);
+  }, []);
+  const act = useAction(setNotice, load);
+  useEffect(() => {
+    load().catch(() => {});
+  }, [load]);
+  return (
+    <div className="addresses">
+      <h3>Your public addresses</h3>
+      <p className="muted small">
+        The public IP of your router (or a DNS name pointing straight at it, like a DDNS name). Servers outside your network that connect to it, through
+        your port forwards, get a line to the container publishing that port. Agents report connections to these addresses only. Names behind Cloudflare's proxy
+        don't work: they resolve to Cloudflare's shared addresses.
+      </p>
+      <Notice notice={notice} onClose={() => setNotice(null)} />
+      <form
+        className="password-form wide"
+        onSubmit={(e) => {
+          e.preventDefault();
+          act(() => api.setPublicAddresses(text), "Saved. Agents pick this up with their next report.");
+        }}
+      >
+        <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={"203.0.113.7\nhome.example.net"} />
+        {resolved.length > 0 && <span className="muted small">Resolves to {resolved.join(", ")}</span>}
+        <button className="btn">Save</button>
+      </form>
+    </div>
   );
 }
 
@@ -424,7 +462,7 @@ function ReportsTab() {
         <a className="btn btn-ghost" href="/api/v1/report.json?download=1">
           JSON
         </a>
-        {["containers", "ports", "connections", "findings"].map((k) => (
+        {["containers", "ports", "connections", "findings", "hosts", "backups", "certificates", "updates"].map((k) => (
           <a key={k} className="btn btn-ghost" href={`/api/v1/report/${k}.csv`}>
             {k[0].toUpperCase() + k.slice(1)} CSV
           </a>
@@ -486,6 +524,158 @@ function ReportsTab() {
   );
 }
 
+function ChecksTab() {
+  const [certs, setCerts] = useState([]);
+  const [images, setImages] = useState(null);
+  const [hostname, setHostname] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [onlyUpdates, setOnlyUpdates] = useState(true);
+  const [notice, setNotice] = useState(null);
+  const load = useCallback(async () => {
+    const [c, i] = await Promise.all([api.certs(), api.imageChecks()]);
+    setCerts(c);
+    setImages(i);
+  }, []);
+  const act = useAction(setNotice, load);
+  useEffect(() => {
+    load().catch((e) => setNotice({ text: e.message, error: true }));
+  }, [load]);
+
+  const certState = (c) => (c.error || (c.days_left !== null && c.days_left < 7) ? "failed" : c.days_left !== null && c.days_left < 14 ? "overdue" : c.days_left === null ? "pending" : "ok");
+  const rows = (images?.items || []).filter((r) => !onlyUpdates || r.state === "update" || r.newer_tag);
+  return (
+    <section>
+      <div className="section-head">
+        <h2>Certificates</h2>
+      </div>
+      <p className="muted">The hub connects to each address every few hours and warns 14 days before the certificate expires, or when it isn't trusted.</p>
+      <Notice notice={notice} onClose={() => setNotice(null)} />
+      <form
+        className="add-user"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          if (await act(() => api.addCert(hostname.trim()), (c) => ({ text: c.error ? `Added ${c.hostname}: ${c.error}` : `Added ${c.hostname}: ${c.days_left} days left.` }))) setHostname("");
+          setBusy(false);
+        }}
+      >
+        <input value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="example.com or example.com:8443" required />
+        <button className="btn" disabled={busy}>
+          {busy ? "Checking…" : "Add"}
+        </button>
+      </form>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Address</th>
+              <th>State</th>
+              <th>Expires</th>
+              <th>Issuer</th>
+              <th>Checked</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {certs.map((c) => (
+              <tr key={c.id}>
+                <td className="mono">
+                  {c.hostname}
+                  {c.port !== 443 ? `:${c.port}` : ""}
+                </td>
+                <td>
+                  <span className={`state-pill pill-${certState(c)}`}>{c.error ? "error" : c.days_left === null ? "pending" : `${c.days_left} d`}</span>
+                  {c.error && <div className="small muted">{c.error}</div>}
+                </td>
+                <td>{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "–"}</td>
+                <td>{c.issuer || "–"}</td>
+                <td>{ago(c.checked_at)}</td>
+                <td className="row-actions">
+                  <button className="btn btn-small btn-ghost" onClick={() => act(() => api.recheckCert(c.id), "Checked again.")}>
+                    Check now
+                  </button>
+                  <button className="btn btn-small btn-danger" onClick={() => act(() => api.deleteCert(c.id), `Removed ${c.hostname}.`)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!certs.length && (
+              <tr>
+                <td colSpan={6} className="muted">
+                  No certificates watched yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h2>Image updates</h2>
+        <div className="btn-row" style={{ margin: 0 }}>
+          <label className="toggle">
+            <input type="checkbox" checked={onlyUpdates} onChange={(e) => setOnlyUpdates(e.target.checked)} /> Only updates
+          </label>
+          {images?.enabled && (
+            <button
+              className="btn btn-small btn-ghost"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await act(() => api.runImageChecks(), "Checked all images.");
+                setBusy(false);
+              }}
+            >
+              {busy ? "Checking…" : "Check now"}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="muted">
+        {images?.enabled
+          ? `Every ${images.every_hours} h the hub asks each image's registry, anonymously, whether its tag now points to a newer image and whether a higher version exists. Only image names and tags are sent.`
+          : "Image checks are turned off on this hub (SERVCHART_IMAGE_CHECKS=0)."}
+      </p>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Container</th>
+              <th>Image</th>
+              <th>Tag</th>
+              <th>Newer version</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.host_pk}-${r.container}`}>
+                <td>
+                  <span className="muted">{r.host} /</span> {r.container}
+                </td>
+                <td className="mono small">{r.image}</td>
+                <td>
+                  <span className={`state-pill pill-${r.state}`} title={r.error || ""}>
+                    {r.state === "update" ? "update" : r.state === "current" ? "current" : r.state === "pending" ? "not checked" : "unknown"}
+                  </span>
+                </td>
+                <td className="mono">{r.newer_tag || ""}</td>
+              </tr>
+            ))}
+            {images && !rows.length && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {onlyUpdates ? "Everything is up to date (or not checked yet)." : "No images."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 const ACTION_LABELS = {
   "logs.view": "viewed logs",
   "host.create": "added host",
@@ -506,6 +696,9 @@ const ACTION_LABELS = {
   "report.schedule": "set report schedule",
   "report.scheduled": "scheduled report sent to",
   "report.scheduled.failed": "scheduled report failed for",
+  "check.cert.add": "watches certificate of",
+  "addresses.update": "set public addresses to",
+  "check.cert.remove": "stopped watching certificate of",
 };
 
 function ActivityTab() {
@@ -526,6 +719,7 @@ function ActivityTab() {
           <option value="user.">Users</option>
           <option value="branding.">Appearance</option>
           <option value="report.">Reports</option>
+          <option value="check.">Checks</option>
         </select>
       </div>
       <Notice notice={notice} onClose={() => setNotice(null)} />
@@ -569,7 +763,7 @@ function ActivityTab() {
 export default function Settings({ me, onClose, onRotate, onAdd, onBranding }) {
   const tabs = [
     ["hosts", "Hosts"],
-    ...(me.is_staff ? [["users", "Users"], ["appearance", "Appearance"], ["reports", "Reports"], ["activity", "Activity"]] : []),
+    ...(me.is_staff ? [["users", "Users"], ["checks", "Checks"], ["appearance", "Appearance"], ["reports", "Reports"], ["activity", "Activity"]] : []),
     ["account", "My account"],
   ];
   const [tab, setTab] = useState("hosts");
@@ -591,6 +785,7 @@ export default function Settings({ me, onClose, onRotate, onAdd, onBranding }) {
         {tab === "hosts" && <HostsTab me={me} onRotate={onRotate} onAdd={onAdd} />}
         {tab === "users" && me.is_staff && <UsersTab me={me} />}
         {tab === "appearance" && me.is_staff && <AppearanceTab onBranding={onBranding} />}
+        {tab === "checks" && me.is_staff && <ChecksTab />}
         {tab === "reports" && me.is_staff && <ReportsTab />}
         {tab === "activity" && me.is_staff && <ActivityTab />}
         {tab === "account" && <AccountTab me={me} />}

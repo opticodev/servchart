@@ -28,6 +28,7 @@ In the map, click **+ Add host**, give it a name, and run the command it shows o
 ```bash
 docker run -d --name servchart-agent --restart unless-stopped --pid host \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /:/host:ro,rslave -e SERVCHART_HOST_ROOT=/host \
   -e SERVCHART_OBSERVE_CONNECTIONS=1 \
   -e SERVCHART_HUB=https://servchart.example.com \
   -e SERVCHART_TOKEN=sc_... \
@@ -58,7 +59,12 @@ How a destination is matched:
 
 1. **A container IP on the same host:** that container.
 2. **An address of another host:** a container publishing that port there, otherwise the host itself (for example a database or NFS running outside Docker).
-3. **Anything else:** listed as "Unknown" in the container's details.
+3. **One of your public addresses** (Settings → Hosts → *Your public addresses*: your router's IP or a DDNS name pointing at it): the one container that publishes that port, so a cloud VM reaching home through a port forward gets its line. Agents report connections to these addresses even though they're public.
+4. **Anything else:** listed as "Unknown" in the container's details.
+
+Servers that reach each other over a VPN such as Tailscale/Headscale or WireGuard need nothing extra: those addresses are private, and each agent reports its own VPN address.
+
+**Domains behind a proxy** (Cloudflare, for example) can't be matched: the connection goes to the proxy's shared IP, which says nothing about the server behind it. On the receiving side ServChart still draws the tunnel container (cloudflared) talking to the service. Each agent's link to the hub is known anyway, so it is drawn as a dotted "reports to ServChart" line.
 
 Host processes (say, nginx installed on the host) get lines from the host box. Connections are aggregated per destination and port, and only **private** destinations are reported (`SERVCHART_OBSERVE_PUBLIC=1` to include public ones).
 
@@ -70,6 +76,40 @@ The **Links** menu chooses what to draw:
 - **Selection only.**
 
 Networks used by a single stack are drawn inside that stack. Only shared networks sit at the top of the host.
+
+## Server health
+
+Each server box shows **CPU**, **RAM** and its fullest **disk**, turning orange at 85% and red at 95%. Each container shows its CPU and memory. Click a server for load, uptime, swap, every disk, Docker's disk use (images, volumes, build cache, the largest and unused volumes) and 24-hour graphs. Click a container for its own graphs, network traffic and the size of its volumes.
+
+- CPU, memory, load and uptime come from the kernel and need nothing extra.
+- **Disks:** a container only sees its own files, so the agent needs the host's root mounted read-only (`-v /:/host:ro,rslave` and `SERVCHART_HOST_ROOT=/host`, already in the install command). Without it, only the disk holding Docker's data is shown. Run natively (pipx), the agent sees every disk.
+- **Container CPU and memory** come from Docker's stats API, the numbers `docker stats` shows.
+- **History:** the hub keeps one sample per server every 5 minutes for 7 days (`SERVCHART_SAMPLE_MINUTES`, `SERVCHART_HISTORY_DAYS`).
+
+## Backups
+
+ServChart doesn't run your backups; it shows whether they ran. It works with any tool (Kopia, restic, Borg, rsync, a database dump…): at the end of a backup job, write a small status file into `/var/lib/servchart/status` on that server. The agent reads it, and the server shows **ok**, **overdue** (no success within `max_age_hours`, default 26 h) or **failed**, on the map and in reports.
+
+```bash
+# end of a cron job / script, on the host
+STATUS=/var/lib/servchart/status; mkdir -p $STATUS
+if kopia snapshot create /data; then
+  printf '{"ok": true, "finished_at": "%s", "message": "nightly"}' "$(date -u +%FT%TZ)" > $STATUS/kopia.json
+else
+  printf '{"ok": false, "finished_at": "%s", "message": "kopia failed"}' "$(date -u +%FT%TZ)" > $STATUS/kopia.json
+fi
+```
+
+Any file works too: an empty `touch /var/lib/servchart/status/borg-nightly` counts as a success at that time. With the pip agent, `servchart-agent --mark kopia` (or `--mark kopia --failed --message "..."`) writes the file for you. Optional JSON fields: `ok`, `finished_at`, `max_age_hours`, `message`, `size_bytes`.
+
+## Checks
+
+**Settings → Checks** (admins):
+
+- **Certificates:** add the addresses you serve (`example.com`, `example.com:8443`). Every 6 hours the hub connects to each one and warns 14 days before expiry, or at once if the certificate isn't trusted.
+- **Image updates:** every 12 hours the hub asks each image's registry (Docker Hub, GHCR, Quay or any other v2 registry, anonymously) whether the tag you run now points to a newer image, and whether a higher version tag exists (`1.27.2` → `1.28.0`, `v16.37.0` → `v16.51.1`, `8.0-alpine` → `9.2-alpine`). Containers with an update get a **↑** on the map. Only image names and tags are sent; turn it off with `SERVCHART_IMAGE_CHECKS=0`. Registries that need a login are skipped.
+
+Reports include all of this: server health, the biggest containers, backups, certificates, image updates and what changed in the last 24 hours (containers added, removed or upgraded), plus findings for full disks, memory pressure, failed or overdue backups, expiring certificates and available updates.
 
 ## Users, hosts and settings
 
@@ -220,6 +260,9 @@ What leaves a host:
 
 - **Sent:** container names, images, state and health, networks and IPs, published ports, mount points, restart policy, Compose project, service, folder and compose file paths, and labels.
 - **Never sent:** environment variables (they're never read), container commands and arguments, and file contents.
+- **Health:** CPU, memory, load and uptime; mount points and sizes of disks; per-container CPU, memory and network counters; Docker volume names and sizes. No file contents.
+- **Backups:** only the fields of the status files you write (name, ok, time, message, size).
+- **Image digests:** to tell whether a tag has a newer image. The hub, not the agent, contacts registries, and only with public image names.
 - **Logs (opt-in, on request):** the lines an admin asks for, with secret-looking values redacted. Not stored by the hub.
 - **Traffic (opt-in):** destination IP, port and connection count for private destinations. No source ports, no payloads, no DNS names.
 - **Redacted:** label values whose key contains `pass`, `secret`, `token`, `key`, `auth`, `credential`, `cookie` or `private` are replaced with `[redacted]`. The hub applies the same rules again on its side, so a modified agent can't store more.
@@ -237,6 +280,8 @@ docker run -d --name servchart-agent --network servchart -e DOCKER_HOST=tcp://do
 ```
 
 **About logs.** Container logs can contain anything an application prints. That's why viewing them is opt-in per host, admin-only, audited, redacted on the host and never stored by the hub. If you use a socket proxy, it needs `CONTAINERS=1`, which covers `/containers/{id}/logs`.
+
+**About the host root mount.** `-v /:/host:ro` lets the agent measure every disk. The agent only calls `statvfs` on mount points and reads `/var/lib/servchart/status`; it never reads other files. A container with the Docker socket can already read the whole host, so the mount adds little real power. Leave it out (and `SERVCHART_HOST_ROOT`) to show only Docker's disk.
 
 **About `--pid host`.** Traffic observation reads `/proc/<pid>/net/tcp` of each container, which requires seeing the host's processes. An agent that has the Docker socket can already start privileged containers, so `--pid host` adds little real power. Leave both the flag and `SERVCHART_OBSERVE_CONNECTIONS` off if you only want the map without traffic lines.
 
@@ -273,7 +318,12 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 | `SERVCHART_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` | – / `587` | SMTP server for report emails |
 | `SERVCHART_SMTP_SSL` / `SERVCHART_SMTP_STARTTLS` | `0` / `1` | Implicit TLS (port 465) / STARTTLS (port 587) |
 | `SERVCHART_REPORT_HOUR` | `7` | Hour (0-23, hub time zone `TZ`) scheduled reports go out |
-| `SERVCHART_REPORT_SCHEDULER` | `1` | `0` to never send scheduled reports from this container |
+| `SERVCHART_REPORT_SCHEDULER` | `1` | `0` to disable background jobs in this container: scheduled reports, certificate and image checks, history clean-up |
+| `SERVCHART_HOST_ROOT` | – | Host root mounted in the hub (e.g. `/host`), so the hub's own server shows all its disks |
+| `SERVCHART_SAMPLE_MINUTES` / `SERVCHART_HISTORY_DAYS` | `5` / `7` | History resolution and retention |
+| `SERVCHART_DISK_WARN` / `SERVCHART_DISK_CRITICAL` | `85` / `95` | Disk-full findings (percent) |
+| `SERVCHART_CERT_WARN_DAYS` / `SERVCHART_CERT_CHECK_HOURS` | `14` / `6` | Certificate warnings |
+| `SERVCHART_IMAGE_CHECKS` / `SERVCHART_IMAGE_CHECK_HOURS` | `1` / `12` | Image update checks against registries |
 
 ### Agent
 
@@ -289,6 +339,10 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 | `SERVCHART_ALLOW_LOGS` | `0` | Let hub admins view this host's container logs (on demand, audited) |
 | `SERVCHART_LOGS_REDACT` | `1` | Redact secret-looking values in log lines before sending |
 | `SERVCHART_COMMAND_POLL` | `3` | Seconds between checks for log requests (only when logs are allowed) |
+| `SERVCHART_HOST_ROOT` | – | Where the host's `/` is mounted (e.g. `/host`), to report every disk and find backup status files |
+| `SERVCHART_HEALTH` / `SERVCHART_STATS` | `1` / `1` | Report server health / per-container CPU and memory |
+| `SERVCHART_DF_INTERVAL` | `3600` | Seconds between measurements of Docker's disk use (volumes); `0` turns it off |
+| `SERVCHART_STATUS_DIR` | `/var/lib/servchart/status` | Where backup status files are read from |
 | `SERVCHART_HOST_IPS` | auto | Extra addresses of this host (e.g. its public IP), so other hosts' connections to it resolve |
 | `SERVCHART_CA_FILE` / `SERVCHART_INSECURE` | – | Custom CA for a self-signed hub / skip TLS checks (not recommended) |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Or `tcp://dockerproxy:2375` |
@@ -320,6 +374,7 @@ See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then pus
 
 - [x] Who-talks-to-whom: Compose dependencies and observed traffic, on one host and across hosts (v0.3)
 - [x] Settings page, single sign-on, container logs, branding, reports and an activity log (v0.3)
+- [x] Server health, container resources, Docker storage, backups, certificate and image update checks, 24 h history (v0.4)
 - [ ] Reverse-proxy routes from Traefik labels and nginx configs (domain → container)
 - [ ] Live status push (WebSockets) instead of 15 s polling
 - [ ] Snapshot history and "what changed" diff

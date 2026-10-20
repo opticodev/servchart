@@ -1,3 +1,28 @@
+import { useEffect, useState } from "react";
+import { api } from "../api.js";
+import { Meter, Sparkline, fmtBytes, fmtDuration, level, memPct } from "./health.jsx";
+
+// History for the selected host, refreshed every 5 minutes while the panel is open.
+function useHistory(hostPk) {
+  const [hist, setHist] = useState(null);
+  useEffect(() => {
+    if (!hostPk) return undefined;
+    let alive = true;
+    const load = () => api.hostHistory(hostPk, 24).then((h) => alive && setHist(h)).catch(() => {});
+    load();
+    const t = setInterval(load, 300000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [hostPk]);
+  return hist;
+}
+
+function Pill({ state, children }) {
+  return <span className={`state-pill pill-${state}`}>{children || state}</span>;
+}
+
 function Row({ label, children }) {
   if (children === null || children === undefined || children === "" || (Array.isArray(children) && !children.length)) return null;
   return (
@@ -60,6 +85,46 @@ function LogsButton({ host, onLogs }) {
   );
 }
 
+function ContainerResources({ d, host }) {
+  const hist = useHistory(d.stats ? host?.pk : null);
+  const series = hist?.containers?.[d.name];
+  const st = d.stats;
+  if (!st) return null;
+  const vols = new Map((host?.storage?.volumes || []).map((v) => [v.name, v.size]));
+  const sized = (d.mounts || []).filter((m) => m.type === "volume" && vols.get(m.source) !== undefined);
+  return (
+    <>
+      <Row label="CPU">
+        {st.cpu_pct === null || st.cpu_pct === undefined ? "–" : `${st.cpu_pct}%`}
+        {series && <Sparkline values={series.cpu} label="CPU, last 24 h" />}
+      </Row>
+      <Row label="Memory">
+        {fmtBytes(st.mem_used)}
+        {st.mem_limit ? <span className="muted"> of {fmtBytes(st.mem_limit)} limit</span> : null}
+        {series && <Sparkline values={series.mem} label="Memory, last 24 h" />}
+      </Row>
+      <Row label="Network">{st.net_rx !== null && st.net_rx !== undefined ? `${fmtBytes(st.net_rx)} in · ${fmtBytes(st.net_tx)} out (since start)` : null}</Row>
+      <Row label="Volumes">
+        {sized.map((m) => (
+          <div key={m.source} className="mono small">
+            {m.source} <span className="muted">· {fmtBytes(vols.get(m.source))}</span>
+          </div>
+        ))}
+      </Row>
+    </>
+  );
+}
+
+function ImageUpdate({ u }) {
+  if (!u) return null;
+  return (
+    <Row label="Image">
+      {u.state === "update" && <Pill state="update">update</Pill>} {u.state === "update" ? "a newer image is published for this tag" : u.state === "current" ? "up to date with its tag" : `couldn't check${u.error ? `: ${u.error}` : ""}`}
+      {u.newer_tag && <div className="small">Version <span className="mono">{u.newer_tag}</span> is available</div>}
+    </Row>
+  );
+}
+
 function ContainerDetails({ d, host, isStaff, onLogs }) {
   const labels = Object.entries(d.labels || {}).filter(([k]) => !k.startsWith("com.docker.compose."));
   return (
@@ -72,6 +137,8 @@ function ContainerDetails({ d, host, isStaff, onLogs }) {
         {d.health ? ` · ${d.health}` : ""}
       </Row>
       <Row label="Started">{d.started_at && d.state === "running" ? ago(d.started_at) : null}</Row>
+      <ImageUpdate u={d.image_update} />
+      <ContainerResources d={d} host={host} />
       <Row label="Stack">{d.compose?.project ? `${d.compose.project} / ${d.compose.service}` : null}</Row>
       <Row label="Folder">{d.compose?.working_dir ? <span className="mono">{d.compose.working_dir}</span> : null}</Row>
       <Row label="Restart">
@@ -118,6 +185,89 @@ function ContainerDetails({ d, host, isStaff, onLogs }) {
   );
 }
 
+function HostHealth({ d }) {
+  const h = d.info?.health;
+  const hist = useHistory(h ? d.pk : null);
+  if (!h) {
+    return d.status === "online" ? <p className="muted small">Update this host's agent to 0.4+ to see CPU, memory, disks and backups.</p> : null;
+  }
+  const mp = memPct(h);
+  return (
+    <>
+      <h3>Health</h3>
+      <Row label="CPU">
+        <Meter label="" pct={h.cpu_pct} warn={80} bad={95} />
+        <span className="muted small"> load {(h.load || []).map((v) => v.toFixed(2)).join(" ")}</span>
+        {hist && <Sparkline values={hist.cpu} max={100} label="CPU, last 24 h" />}
+      </Row>
+      <Row label="Memory">
+        <Meter label="" pct={mp} />
+        <span className="muted small"> {fmtBytes(h.mem_total - h.mem_available)} of {fmtBytes(h.mem_total)}</span>
+        {hist && <Sparkline values={hist.mem} max={hist.mem_total || h.mem_total} label="Memory, last 24 h" />}
+      </Row>
+      {h.swap_total ? <Row label="Swap">{fmtBytes(h.swap_total - h.swap_free)} of {fmtBytes(h.swap_total)}</Row> : null}
+      <Row label="Up">{fmtDuration(h.uptime_s)}</Row>
+      <Row label="Disks">
+        {(h.disks || []).map((disk) => (
+          <div key={disk.mount} className={`disk-row meter-${level(disk.pct)}`} title={`${disk.fs} · ${fmtBytes(disk.used)} used of ${fmtBytes(disk.total)}`}>
+            <span className="mono">{disk.mount}</span>
+            <span className="meter-bar">
+              <span style={{ width: `${disk.pct}%` }} />
+            </span>
+            <span className="meter-value small">
+              {Math.round(disk.pct)}% · {fmtBytes(disk.total - disk.used)} free
+            </span>
+          </div>
+        ))}
+        {h.disk_source === "docker" && <div className="muted small">Only Docker's disk is visible. Mount the host root (-v /:/host:ro, SERVCHART_HOST_ROOT=/host) to see all disks.</div>}
+      </Row>
+    </>
+  );
+}
+
+function HostStorage({ s }) {
+  if (!s) return null;
+  return (
+    <>
+      <h3>Docker storage</h3>
+      <Row label="Images">
+        {fmtBytes(s.images_bytes)} <span className="muted">· {s.images_count} images{s.images_unused ? `, ${s.images_unused} unused` : ""}</span>
+      </Row>
+      <Row label="Volumes">
+        {fmtBytes(s.volumes_bytes)} <span className="muted">· {s.volumes_count} volumes{s.volumes_unused ? `, ${s.volumes_unused} unused` : ""}</span>
+      </Row>
+      <Row label="Containers">{fmtBytes(s.containers_rw_bytes)}</Row>
+      <Row label="Build cache">{s.build_cache_bytes ? fmtBytes(s.build_cache_bytes) : null}</Row>
+      {(s.volumes || []).length > 0 && (
+        <details>
+          <summary>Largest volumes</summary>
+          {s.volumes.slice(0, 15).map((v) => (
+            <div key={v.name} className="mono small">
+              {v.name} <span className="muted">· {fmtBytes(v.size)}{v.refs === 0 ? " · unused" : ""}</span>
+            </div>
+          ))}
+        </details>
+      )}
+    </>
+  );
+}
+
+function HostBackups({ items }) {
+  if (!items) return null;
+  return (
+    <>
+      <h3>Backups</h3>
+      {items.length === 0 && <p className="muted small">No status files yet in /var/lib/servchart/status.</p>}
+      {items.map((b) => (
+        <Row key={b.name} label={b.name}>
+          <Pill state={b.state} /> {b.age_hours !== null && b.age_hours !== undefined ? `${Math.round(b.age_hours)} h ago` : "time unknown"}
+          {b.message ? <div className="muted small">{b.message}</div> : null}
+        </Row>
+      ))}
+    </>
+  );
+}
+
 function HostDetails({ d, isStaff, onRotate }) {
   const info = d.info || {};
   return (
@@ -144,6 +294,9 @@ function HostDetails({ d, isStaff, onRotate }) {
             : "off (SERVCHART_OBSERVE_CONNECTIONS=1 to enable)"}
       </Row>
       <Talks items={info.talks_to} unresolved={info.talks_to_unresolved} observed={info.observe === "on"} title="Host processes talk to" />
+      <HostHealth d={d} />
+      <HostBackups items={d.backups} />
+      <HostStorage s={d.storage} />
       {isStaff && !d.is_local && (
         <button className="btn btn-ghost" onClick={() => onRotate(d)}>
           Rotate token…

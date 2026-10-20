@@ -1,8 +1,24 @@
 # Changelog
 
+## 0.4.0
+
+- **Server health.** CPU, RAM and fullest disk on every server box (orange at 85%, red at 95%); load, uptime, swap and every disk in the details. Needs the host root mounted read-only for all disks (`-v /:/host:ro,rslave -e SERVCHART_HOST_ROOT=/host`, now in the install command).
+- **Container resources.** CPU and memory on every container (from Docker's stats), network traffic and volume sizes in the details.
+- **Docker storage.** Images, volumes (largest and unused), container layers and build cache per server.
+- **Backups, any tool.** Backup jobs drop a status file in `/var/lib/servchart/status`; servers show ok / overdue / failed. `servchart-agent --mark NAME` writes one.
+- **Certificate checks.** Settings → Checks: the hub watches TLS endpoints and warns 14 days before expiry or when a certificate isn't trusted.
+- **Image updates.** The hub asks registries whether running tags point to newer images and whether newer versions exist; ↑ on the map, list in Settings → Checks. `SERVCHART_IMAGE_CHECKS=0` turns it off.
+- **Your public addresses.** Settings → Hosts: list your router's public IP or DDNS name. Connections from outside servers to it (through port forwards) are drawn to the container publishing that port, and the hub tells agents to report those connections.
+- **Agent links.** Each agent's connection to the hub is drawn as a dotted "reports to ServChart" line, even when it goes through a proxy such as Cloudflare.
+- **History.** 7 days of 5-minute samples; 24 h graphs in the details panel.
+- **Reports** gain server health, biggest containers, backups, certificates, image updates and "what changed in 24 h", new findings (disk full, memory, load, swap, failed/overdue backups, certificates, updates, unused volumes, build cache), and CSV exports for hosts, backups, certificates and updates.
+
 ## 0.3.1
 
 - **Calmer map.** New default "Links: overview": one line per pair of stacks on a host and one per pair of servers, with ports merged ("· 3 links"). Lines inside a stack and Compose dependencies appear when you select something. Moving dashes only on the selection. The previous behaviour is "Links: every connection".
+- **Containers arranged by who talks to whom.** Inside a stack, callers sit on the left and what they call on the right (web → app → database), so lines run left to right instead of across the box.
+- A Compose dependency that is also seen as traffic is drawn once.
+- The account menu now looks like one (☰ name ▾), and a **Report** button sits next to it.
 - **Fix:** "Is local" could be ticked on agent hosts in the Django admin, which made the hub write its own host's containers into one of them (a duplicate server on the map). The field is now read-only, the hub only writes to its own record, and upgrading resets the flag on agent hosts.
 
 ## 0.3.0

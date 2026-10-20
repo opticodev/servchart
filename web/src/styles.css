@@ -269,3 +269,38 @@ a.btn { text-decoration: none; display: inline-block; }
 /* overview: merged lines are a bit heavier */
 .react-flow__edge.edge-agg .react-flow__edge-path { stroke-width: 2.4; }
 .react-flow__edge.edge-agg.edge-cross .react-flow__edge-path { stroke-width: 3; }
+.menu summary { display: inline-flex; align-items: center; gap: 6px; }
+.menu summary .caret { font-size: 10px; color: var(--muted); }
+.toolbar a.btn { text-decoration: none; }
+
+/* v0.4: health */
+.host-meters { display: inline-flex; gap: 10px; margin-left: auto; align-items: center; }
+.host-meters + .badge, .host-meters ~ .badge { margin-left: 0; }
+.meter { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.meter-bar { width: 34px; height: 6px; border-radius: 3px; background: var(--chip-bg); overflow: hidden; display: inline-block; }
+.meter-bar span { display: block; height: 100%; background: var(--ok); }
+.meter-warn .meter-bar span { background: var(--warn); }
+.meter-bad .meter-bar span { background: var(--bad); }
+.meter-bad .meter-value { color: var(--bad); font-weight: 600; }
+.meter-warn .meter-value { color: var(--warn); font-weight: 600; }
+.badge-bad { background: rgba(220, 38, 38, 0.12); color: var(--bad); margin-left: 0; }
+.ctr-update { margin-left: auto; color: var(--accent); font-weight: 700; font-size: 13px; }
+.ctr-usage { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sparkline { display: block; width: 100%; height: 36px; margin-top: 4px; }
+.spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark-area { fill: var(--accent-soft); opacity: 0.7; }
+.spark-dot { fill: var(--accent); }
+.disk-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "mount value" "bar bar"; gap: 2px 8px; align-items: center; font-size: 12.5px; margin: 2px 0 8px; }
+.disk-row > .mono { grid-area: mount; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-row > .meter-value { grid-area: value; white-space: nowrap; }
+.disk-row > .meter-bar { grid-area: bar; width: 100%; }
+.state-pill { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #fff; text-transform: uppercase; }
+.pill-ok, .pill-current { background: var(--ok); }
+.pill-overdue { background: var(--warn); }
+.pill-failed { background: var(--bad); }
+.pill-update { background: var(--accent); }
+.pill-unknown, .pill-pending { background: var(--idle); }
+.details h3 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.react-flow__edge.edge-agent .react-flow__edge-path { stroke-dasharray: 2 5; opacity: 0.7; }
+.addresses { margin-top: 24px; }
+.password-form textarea { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: 13px ui-monospace, Menlo, Consolas, monospace; resize: vertical; }

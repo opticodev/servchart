@@ -25,7 +25,14 @@ def _ctr_label(host_name: str, c: dict) -> str:
     return f"{host_name} / {c.get('name')}"
 
 
-def build_report(graph: dict, site_name: str = "ServChart") -> dict:
+def _gb(n) -> str:
+    return f"{n / 1024 ** 3:.1f} GB" if n else "0 GB"
+
+
+def build_report(graph: dict, site_name: str = "ServChart", certs: list | None = None, changes: dict | None = None,
+                 limits: dict | None = None) -> dict:
+    """certs: [cert payloads]; changes: host name -> history.changes(); limits: thresholds."""
+    limits = {"disk_warn": 85, "disk_critical": 95, "cert_warn_days": 14, **(limits or {})}
     nodes = graph.get("nodes") or []
     edges = graph.get("edges") or []
     hosts = [n["data"] for n in nodes if n["type"] == "host"]
@@ -72,6 +79,88 @@ def build_report(graph: dict, site_name: str = "ServChart") -> dict:
             dests = ", ".join(sorted({f"{u['ip']}:{u['port']}" for u in unknown})[:5])
             add("info", "unknown-destination", label, f"Talks to addresses that aren't a mapped host: {dests}.")
 
+    # --- server health, storage and backups ----------------------------------------------------
+    health_rows, backup_rows = [], []
+    for h in hosts:
+        info = h.get("info") or {}
+        hh = info.get("health")
+        if hh:
+            mem_pct = round(100 * (hh["mem_total"] - hh["mem_available"]) / hh["mem_total"], 1) if hh.get("mem_total") and hh.get("mem_available") is not None else None
+            for d in hh.get("disks") or []:
+                pct = d.get("pct") or 0
+                where = f"{h['name']}: {d['mount']}"
+                if pct >= limits["disk_critical"]:
+                    add("high", "disk-full", where, f"Disk is {pct:.0f}% full ({_gb(d['total'] - d['used'])} free).")
+                elif pct >= limits["disk_warn"]:
+                    add("medium", "disk-filling", where, f"Disk is {pct:.0f}% full ({_gb(d['total'] - d['used'])} free).")
+            if mem_pct is not None and mem_pct >= 90:
+                add("medium", "memory", h["name"], f"Memory is {mem_pct:.0f}% used.")
+            load1 = (hh.get("load") or [None])[0]
+            if load1 is not None and info.get("cpus") and load1 > 2 * info["cpus"]:
+                add("low", "load", h["name"], f"Load {load1:.1f} on {info['cpus']} CPUs.")
+            if hh.get("swap_total") and hh.get("swap_free") is not None and hh["swap_free"] < hh["swap_total"] * 0.5:
+                add("low", "swap", h["name"], f"More than half of the swap is in use ({_gb(hh['swap_total'] - hh['swap_free'])}).")
+            health_rows.append(
+                {
+                    "host": h["name"], "cpu_pct": hh.get("cpu_pct"), "mem_pct": mem_pct, "mem_total": hh.get("mem_total"),
+                    "load": hh.get("load"), "cpus": info.get("cpus"), "uptime_s": hh.get("uptime_s"),
+                    "disks": hh.get("disks") or [], "disk_source": hh.get("disk_source"),
+                    "storage": {k: v for k, v in (h.get("storage") or {}).items() if k != "volumes"} or None,
+                }
+            )
+        elif h.get("status") == "online":
+            add("info", "health-off", h["name"], "No health data: update the agent to 0.4+ (CPU, memory, disks, backups).")
+        st = h.get("storage") or {}
+        if st.get("volumes_unused"):
+            unused = sum(v.get("size") or 0 for v in st.get("volumes") or [] if v.get("refs") == 0)
+            add("info", "unused-volumes", h["name"], f"{st['volumes_unused']} volume(s) not used by any container ({_gb(unused)}).")
+        if (st.get("build_cache_bytes") or 0) > 5 * 1024**3:
+            add("info", "build-cache", h["name"], f"Build cache uses {_gb(st['build_cache_bytes'])} (docker builder prune).")
+        for b in h.get("backups") or []:
+            where = f"{h['name']}: {b['name']}"
+            if b["state"] == "failed":
+                add("high", "backup-failed", where, f"Last backup run failed{': ' + b['message'] if b.get('message') else ''}.")
+            elif b["state"] == "overdue":
+                add("medium", "backup-overdue", where, f"No successful backup for {b['age_hours']:.0f} h." if b.get("age_hours") is not None else "Backup time unknown.")
+            backup_rows.append({"host": h["name"], **b})
+
+    for hid, c in containers:
+        st = c.get("stats") or {}
+        if st.get("mem_limit") and st.get("mem_used") and st["mem_used"] > 0.9 * st["mem_limit"]:
+            add("medium", "container-memory", _ctr_label(host_name.get(hid, hid), c), f"Uses {100 * st['mem_used'] / st['mem_limit']:.0f}% of its memory limit.")
+
+    update_rows = []
+    for hid, c in containers:
+        u = c.get("image_update")
+        if not u or u["state"] == "current" and not u.get("newer_tag"):
+            continue
+        label = _ctr_label(host_name.get(hid, hid), c)
+        if u["state"] == "update":
+            add("low", "image-update", label, f"A newer image is published for {c['image']}; pull and recreate to update.")
+        if u.get("newer_tag"):
+            add("info", "newer-version", label, f"Version {u['newer_tag']} is available (running {c['image']}).")
+        if u["state"] != "unknown" or u.get("newer_tag"):
+            update_rows.append({"host": host_name.get(hid, hid), "container": c.get("name"), "image": c.get("image"), "state": u["state"], "newer_tag": u.get("newer_tag")})
+
+    cert_rows = list(certs or [])
+    for cert in cert_rows:
+        where = f"{cert['hostname']}:{cert['port']}" if cert["port"] != 443 else cert["hostname"]
+        if cert.get("error"):
+            add("high", "cert-error", where, cert["error"])
+        elif cert.get("days_left") is not None:
+            if cert["days_left"] < 0:
+                add("high", "cert-expired", where, "Certificate has expired.")
+            elif cert["days_left"] < 7:
+                add("high", "cert-expiring", where, f"Certificate expires in {cert['days_left']} day(s).")
+            elif cert["days_left"] < limits["cert_warn_days"]:
+                add("medium", "cert-expiring", where, f"Certificate expires in {cert['days_left']} days.")
+
+    top = sorted(
+        ({"host": host_name.get(hid, hid), "container": c.get("name"), "cpu_pct": (c.get("stats") or {}).get("cpu_pct"), "mem_used": (c.get("stats") or {}).get("mem_used")}
+         for hid, c in containers if c.get("stats")),
+        key=lambda r: -(r["mem_used"] or 0),
+    )[:10]
+
     findings.sort(key=lambda f: (SEVERITY_ORDER[f["severity"]], f["code"], f["target"]))
 
     inventory = []
@@ -110,7 +199,7 @@ def build_report(graph: dict, site_name: str = "ServChart") -> dict:
             continue
         connections.append(
             {
-                "kind": "observed" if e["kind"] == "flow" else "depends_on",
+                "kind": "agent_report" if e.get("agent") else "observed" if e["kind"] == "flow" else "depends_on",
                 "source": _qualified(e["source"], names, host_name),
                 "target": _qualified(e["target"], names, host_name),
                 "ports": e.get("ports") or [],
@@ -134,10 +223,22 @@ def build_report(graph: dict, site_name: str = "ServChart") -> dict:
             "published_ports": sum(1 for c in all_ctrs for p in c.get("ports") or [] if p.get("public")),
             "connections": sum(1 for c in connections if c["kind"] == "observed"),
             "findings": {sev: sum(1 for f in findings if f["severity"] == sev) for sev in SEVERITY_ORDER},
+            "disks_warn": sum(1 for f in findings if f["code"] in ("disk-full", "disk-filling")),
+            "backups": len(backup_rows),
+            "backups_bad": sum(1 for b in backup_rows if b["state"] != "ok"),
+            "certs": len(cert_rows),
+            "certs_bad": sum(1 for f in findings if f["code"].startswith("cert-")),
+            "updates": sum(1 for u in update_rows if u["state"] == "update" or u.get("newer_tag")),
         },
         "findings": findings,
         "inventory": inventory,
         "connections": connections,
+        "health": health_rows,
+        "top_containers": top,
+        "backups": backup_rows,
+        "certificates": cert_rows,
+        "updates": update_rows,
+        "changes": {k: v for k, v in (changes or {}).items() if v and (v["added"] or v["removed"] or v["image_changed"])},
     }
 
 
@@ -170,7 +271,7 @@ def _container_row(c: dict) -> dict:
 
 # --- CSV exports -------------------------------------------------------------------------
 
-CSV_KINDS = ("containers", "ports", "connections", "findings")
+CSV_KINDS = ("containers", "ports", "connections", "findings", "hosts", "backups", "certificates", "updates")
 
 
 def _safe(value) -> str:
@@ -203,6 +304,24 @@ def to_csv(report: dict, kind: str) -> str:
         w.writerow(["severity", "code", "target", "message"])
         for f in report["findings"]:
             w.writerow([_safe(f[k]) for k in ("severity", "code", "target", "message")])
+    elif kind == "hosts":
+        w.writerow(["host", "cpu_pct", "mem_pct", "mem_total", "load1", "cpus", "uptime_hours", "mount", "disk_total", "disk_used", "disk_pct"])
+        for r in report["health"]:
+            base = [r["host"], r["cpu_pct"], r["mem_pct"], r["mem_total"], (r["load"] or [None])[0], r["cpus"], round(r["uptime_s"] / 3600, 1) if r["uptime_s"] else ""]
+            for d in r["disks"] or [{}]:
+                w.writerow([_safe(v) for v in base + [d.get("mount"), d.get("total"), d.get("used"), d.get("pct")]])
+    elif kind == "backups":
+        w.writerow(["host", "name", "state", "finished_at", "age_hours", "message", "size_bytes"])
+        for b in report["backups"]:
+            w.writerow([_safe(b.get(k)) for k in ("host", "name", "state", "finished_at", "age_hours", "message", "size_bytes")])
+    elif kind == "certificates":
+        w.writerow(["hostname", "port", "expires_at", "days_left", "issuer", "error", "checked_at"])
+        for c in report["certificates"]:
+            w.writerow([_safe(c.get(k)) for k in ("hostname", "port", "expires_at", "days_left", "issuer", "error", "checked_at")])
+    elif kind == "updates":
+        w.writerow(["host", "container", "image", "state", "newer_tag"])
+        for u in report["updates"]:
+            w.writerow([_safe(u.get(k)) for k in ("host", "container", "image", "state", "newer_tag")])
     else:
         raise ValueError(kind)
     return buf.getvalue()

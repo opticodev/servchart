@@ -14,7 +14,30 @@
     "ips": [
       "10.20.0.2"
     ],
-    "observe": "on"
+    "observe": "on",
+    "health": {
+      "cpu_pct": 21,
+      "load": [
+        0.8,
+        0.6,
+        0.4
+      ],
+      "uptime_s": 777600,
+      "mem_total": 8589934592,
+      "mem_available": 2662879723,
+      "swap_total": 0,
+      "swap_free": 0,
+      "disks": [
+        {
+          "mount": "/",
+          "fs": "ext4",
+          "total": 214748364800,
+          "used": 184683593728,
+          "pct": 86.0
+        }
+      ],
+      "disk_source": "host"
+    }
   },
   "containers": [
     {
@@ -102,7 +125,12 @@
           "port": 8989,
           "count": 2
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 8.4,
+        "mem_used": 612368384,
+        "mem_limit": null
+      }
     },
     {
       "id": "00003d7d47ce",
@@ -152,7 +180,12 @@
           "port": 6379,
           "count": 2
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 11.8,
+        "mem_used": 396361728,
+        "mem_limit": null
+      }
     },
     {
       "id": "0000c320655e",
@@ -186,7 +219,12 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 6.2,
+        "mem_used": 463470592,
+        "mem_limit": null
+      }
     },
     {
       "id": "0000752c7cac",
@@ -220,7 +258,12 @@
         }
       ],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 5.2,
+        "mem_used": 201326592,
+        "mem_limit": null
+      }
     },
     {
       "id": "0000afa22568",
@@ -273,7 +316,12 @@
           "port": 8096,
           "count": 1
         }
-      ]
+      ],
+      "stats": {
+        "cpu_pct": 8.8,
+        "mem_used": 239075328,
+        "mem_limit": null
+      }
     },
     {
       "id": "00006659d6c8",
@@ -299,7 +347,12 @@
       },
       "networks": [],
       "ports": [],
-      "mounts": []
+      "mounts": [],
+      "stats": {
+        "cpu_pct": 8.0,
+        "mem_used": 356515840,
+        "mem_limit": null
+      }
     }
   ],
   "networks": [
@@ -343,5 +396,25 @@
         "172.21.0.0/16"
       ]
     }
-  ]
+  ],
+  "backups": [
+    {
+      "name": "kopia",
+      "ok": true,
+      "finished_at": "2026-10-19T03:00:00+00:00",
+      "message": "nightly",
+      "max_age_hours": 26
+    }
+  ],
+  "storage": {
+    "images_bytes": 9663676416,
+    "images_count": 14,
+    "images_unused": 2,
+    "containers_rw_bytes": 314572800,
+    "volumes_bytes": 4294967296,
+    "volumes_count": 6,
+    "volumes_unused": 1,
+    "build_cache_bytes": 0,
+    "volumes": []
+  }
 }

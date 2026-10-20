@@ -31,8 +31,23 @@ MAX_RECIPIENTS = 20
 
 
 def current_report(site: SiteSettings | None = None) -> dict:
+    from .checks import cert_payload
+    from .history import changes
+    from .models import CertCheck, Host
+
     site = site or SiteSettings.load()
-    return build_report(build_graph(), site.app_name or "ServChart")
+    hosts = list(Host.objects.filter(enabled=True))
+    return build_report(
+        build_graph(hosts),
+        site.app_name or "ServChart",
+        certs=[cert_payload(c) for c in CertCheck.objects.all()],
+        changes={h.name: changes(h, h.snapshot or {}) for h in hosts},
+        limits={
+            "disk_warn": settings.SERVCHART_DISK_WARN,
+            "disk_critical": settings.SERVCHART_DISK_CRITICAL,
+            "cert_warn_days": settings.SERVCHART_CERT_WARN_DAYS,
+        },
+    )
 
 
 def render_html(report: dict, site: SiteSettings, printable: bool = True) -> str:

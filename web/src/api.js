@@ -61,5 +61,15 @@ export const api = {
   updateReportSchedule: (changes) => request("PATCH", "/api/v1/report/schedule", changes),
   sendReport: (recipients) => request("POST", "/api/v1/report/send", recipients ? { recipients } : {}),
   audit: (action) => request("GET", `/api/v1/audit${action ? `?action=${encodeURIComponent(action)}` : ""}`),
+  // v0.4: history and checks
+  hostHistory: (pk, hours = 24) => request("GET", `/api/v1/hosts/${pk}/history?hours=${hours}`),
+  certs: () => request("GET", "/api/v1/checks/certs"),
+  addCert: (hostname) => request("POST", "/api/v1/checks/certs", { hostname }),
+  recheckCert: (id) => request("POST", `/api/v1/checks/certs/${id}`, {}),
+  deleteCert: (id) => request("DELETE", `/api/v1/checks/certs/${id}`),
+  imageChecks: () => request("GET", "/api/v1/checks/images"),
+  runImageChecks: () => request("POST", "/api/v1/checks/images", {}),
+  publicAddresses: () => request("GET", "/api/v1/addresses"),
+  setPublicAddresses: (addresses) => request("PATCH", "/api/v1/addresses", { addresses }),
   csrfToken,
 };

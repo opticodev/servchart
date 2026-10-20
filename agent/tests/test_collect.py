@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -98,3 +99,37 @@ class CollectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatsClient(FakeClient):
+    def inspect_container(self, cid):
+        doc = json.loads(json.dumps(INSPECT))
+        doc["Image"] = "sha256:" + "b" * 64
+        doc["State"]["Running"] = True
+        return doc
+
+    def get(self, path):
+        if path.startswith("/images/"):
+            return {"RepoDigests": ["vaultwarden/server@sha256:" + "a" * 64]}
+        if "/stats" in path:
+            return {"cpu_stats": {"cpu_usage": {"total_usage": 1}, "system_cpu_usage": 10, "online_cpus": 1},
+                    "memory_stats": {"usage": 2048, "limit": 4096, "stats": {}}}
+        raise RuntimeError(path)
+
+
+class CollectV04Tests(unittest.TestCase):
+    def test_health_stats_and_digests(self):
+        with mock.patch.dict(os.environ, {"SERVCHART_STATUS_DIR": "/nonexistent"}):
+            snap = collect(StatsClient())
+        self.assertIn("mem_total", snap["host"]["health"])
+        self.assertIn(snap["host"]["health"]["disk_source"], ("host", "docker", "none"))
+        c = snap["containers"][0]
+        self.assertEqual(c["image_digests"], ["vaultwarden/server@sha256:" + "a" * 64])
+        self.assertEqual(c["stats"]["mem_used"], 2048)
+        self.assertNotIn("backups", snap)
+
+    def test_health_can_be_turned_off(self):
+        with mock.patch.dict(os.environ, {"SERVCHART_HEALTH": "0", "SERVCHART_STATS": "0"}):
+            snap = collect(StatsClient())
+        self.assertNotIn("health", snap["host"])
+        self.assertNotIn("stats", snap["containers"][0])

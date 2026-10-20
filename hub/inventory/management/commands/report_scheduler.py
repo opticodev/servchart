@@ -1,4 +1,5 @@
-"""Send scheduled report emails (Settings -> Reports). Runs next to the web server.
+"""Background jobs next to the web server: scheduled report emails (Settings -> Reports),
+certificate and image update checks, and history clean-up.
 
 Checks once a minute; a report is sent when its slot (daily / Mondays / the 1st, at
 SERVCHART_REPORT_HOUR local time) has passed since the last one. If the hub was down
@@ -44,6 +45,24 @@ def run_once(now=None) -> bool:
     return True
 
 
+def background_checks(state: dict, now=None) -> None:
+    """Certificates, image updates and history clean-up; each at its own pace."""
+    import time as _t
+
+    from inventory import checks, history
+
+    t = now or _t.time()
+    if t - state.get("certs", 0) >= 600:  # each certificate itself is re-checked every SERVCHART_CERT_CHECK_HOURS
+        state["certs"] = t
+        checks.run_cert_checks()
+    if t - state.get("images", 0) >= 900:
+        state["images"] = t
+        checks.run_image_checks()
+    if t - state.get("purge", 0) >= 3600:
+        state["purge"] = t
+        history.purge()
+
+
 class Command(BaseCommand):
     help = "Email the infrastructure report on the schedule set in Settings -> Reports."
 
@@ -51,12 +70,17 @@ class Command(BaseCommand):
         parser.add_argument("--once", action="store_true")
 
     def handle(self, *args, once=False, **options):
+        state: dict = {}
         while True:
             close_old_connections()
             try:
                 run_once()
             except Exception:
                 log.exception("report scheduler error")
+            try:
+                background_checks(state)
+            except Exception:
+                log.exception("background checks error")
             if once:
                 return
             time.sleep(60)

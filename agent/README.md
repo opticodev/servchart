@@ -11,6 +11,7 @@ It reads this host's Docker state (GET requests only), drops anything sensitive,
 ```bash
 docker run -d --name servchart-agent --restart unless-stopped --pid host \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /:/host:ro,rslave -e SERVCHART_HOST_ROOT=/host \
   -e SERVCHART_OBSERVE_CONNECTIONS=1 \
   -e SERVCHART_HUB=https://servchart.example.com \
   -e SERVCHART_TOKEN=sc_... \
@@ -30,5 +31,7 @@ Get the token from the hub: **+ Add host** in the map.
 ## What it sends
 
 It sends container names, images, state and health, networks and IPs, published ports, mounts, restart policy, and Compose stack details (project, service, folder, compose files). It **never** sends environment variables or container commands, and secret-looking label values are redacted. Set `SERVCHART_HIDE_PATHS=1` to also drop host paths and stack folders.
+
+Since 0.4 it also reports server health (CPU, memory, load, uptime, disk usage of each mount point), per-container CPU and memory, Docker's disk use, and backup status files from `/var/lib/servchart/status`. After a backup job, record it with `servchart-agent --mark NAME` (add `--failed` when it failed).
 
 All options are in the [main README](https://github.com/opticodev/servchart#agent).

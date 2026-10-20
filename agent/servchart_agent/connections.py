@@ -77,6 +77,11 @@ def is_reportable(ip: str, include_public: bool = False) -> bool:
     return addr.is_private or (addr.version == 4 and addr in CGNAT)
 
 
+# Public addresses the hub asked about (your own public IPs, behind your router): reported even
+# though they're public, so connections through your port forwards can be resolved.
+EXTRA_IPS: set[str] = set()
+
+
 def outbound(rows, exclude_ips=(), include_public: bool = False) -> list[dict]:
     """Aggregate outbound established connections: [{"ip", "port", "count"}].
 
@@ -88,7 +93,7 @@ def outbound(rows, exclude_ips=(), include_public: bool = False) -> list[dict]:
     for _lip, lport, rip, rport, st in rows:
         if st != TCP_ESTABLISHED or lport in listening:
             continue
-        if rip in exclude or not is_reportable(rip, include_public):
+        if rip in exclude or not (is_reportable(rip, include_public) or rip in EXTRA_IPS):
             continue
         counts[(rip, rport)] += 1
     out = [{"ip": ip, "port": port, "count": n} for (ip, port), n in counts.items()]

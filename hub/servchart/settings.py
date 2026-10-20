@@ -167,6 +167,16 @@ EMAIL_TIMEOUT = 20
 DEFAULT_FROM_EMAIL = os.environ.get("SERVCHART_SMTP_FROM", "") or (EMAIL_HOST_USER if "@" in EMAIL_HOST_USER else "servchart@localhost")
 SERVCHART_REPORT_HOUR = max(0, min(int(os.environ.get("SERVCHART_REPORT_HOUR", "7")), 23))  # local time (TIME_ZONE)
 
+# History and checks (v0.4)
+SERVCHART_SAMPLE_MINUTES = max(1, int(os.environ.get("SERVCHART_SAMPLE_MINUTES", "5")))
+SERVCHART_HISTORY_DAYS = max(1, int(os.environ.get("SERVCHART_HISTORY_DAYS", "7")))
+SERVCHART_IMAGE_CHECKS = _env_bool("SERVCHART_IMAGE_CHECKS", True)  # ask registries whether image tags moved
+SERVCHART_IMAGE_CHECK_HOURS = max(1, int(os.environ.get("SERVCHART_IMAGE_CHECK_HOURS", "12")))
+SERVCHART_CERT_CHECK_HOURS = max(1, int(os.environ.get("SERVCHART_CERT_CHECK_HOURS", "6")))
+SERVCHART_DISK_WARN = int(os.environ.get("SERVCHART_DISK_WARN", "85"))  # percent
+SERVCHART_DISK_CRITICAL = int(os.environ.get("SERVCHART_DISK_CRITICAL", "95"))
+SERVCHART_CERT_WARN_DAYS = int(os.environ.get("SERVCHART_CERT_WARN_DAYS", "14"))
+
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"

@@ -2,6 +2,7 @@
 
     python -m servchart_agent --hub https://servchart.example.com --token sc_xxx
     python -m servchart_agent --stdout          # print one snapshot and exit
+    python -m servchart_agent --mark kopia      # record a successful backup run (see backups.py)
 
 Every option can also be set with an environment variable (shown in --help).
 """
@@ -18,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import __version__, commands
+from . import __version__, backups, commands
 from .collect import collect
 from .docker_api import DockerClient, DockerError
 
@@ -55,7 +56,27 @@ def hub_request(hub: str, token: str, ca_file: str | None = None, insecure: bool
 
 
 def push(snapshot: dict, hub: str, token: str, ca_file: str | None = None, insecure: bool = False) -> None:
-    hub_request(hub, token, ca_file, insecure)("POST", "/api/v1/report", snapshot)
+    answer = hub_request(hub, token, ca_file, insecure)("POST", "/api/v1/report", snapshot)
+    apply_hub_hints(answer)
+
+
+def apply_hub_hints(answer) -> None:
+    """The hub may list your public addresses so connections to them get reported (max 50, IPs only)."""
+    import ipaddress
+
+    from . import connections
+
+    ips = (answer or {}).get("observe_ips") if isinstance(answer, dict) else None
+    if not isinstance(ips, list):
+        return
+    clean = set()
+    for ip in ips[:50]:
+        try:
+            clean.add(str(ipaddress.ip_address(str(ip))))
+        except ValueError:
+            continue
+    connections.EXTRA_IPS.clear()
+    connections.EXTRA_IPS.update(clean)
 
 
 def parse_args(argv=None):
@@ -72,6 +93,10 @@ def parse_args(argv=None):
                    help="Skip TLS verification (env SERVCHART_INSECURE=1). Not recommended.")
     p.add_argument("--once", action="store_true", help="Report once and exit")
     p.add_argument("--stdout", action="store_true", help="Print the snapshot as JSON instead of sending it")
+    p.add_argument("--mark", metavar="NAME", help="Record that the backup job NAME just finished, then exit")
+    p.add_argument("--failed", action="store_true", help="With --mark: the backup failed")
+    p.add_argument("--message", default="", help="With --mark: a short note shown in ServChart")
+    p.add_argument("--max-age-hours", type=float, help="With --mark: warn when no new run within this many hours (default 26)")
     p.add_argument("--version", action="version", version=f"servchart-agent {__version__}")
     return p.parse_args(argv)
 
@@ -80,6 +105,14 @@ def main(argv=None) -> int:
     logging.basicConfig(level=os.environ.get("SERVCHART_LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(message)s")
     args = parse_args(argv)
+    if args.mark:
+        try:
+            path = backups.mark(args.mark, ok=not args.failed, message=args.message, max_age_hours=args.max_age_hours)
+        except (ValueError, OSError) as exc:
+            log.error("could not record backup status: %s", exc)
+            return 1
+        log.info("recorded %s backup %s in %s", args.mark, "failure" if args.failed else "success", path)
+        return 0
     client = DockerClient()
 
     if args.stdout:

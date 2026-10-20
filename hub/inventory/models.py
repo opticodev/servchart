@@ -66,6 +66,7 @@ class SiteSettings(models.Model):
     report_schedule = models.CharField(max_length=10, default="off", help_text="off, daily, weekly or monthly")
     report_recipients = models.TextField(blank=True, default="", help_text="Comma-separated email addresses")
     report_last_sent = models.DateTimeField(null=True, blank=True)
+    public_addresses = models.TextField(blank=True, default="", help_text="Your public IPs or DDNS names, one per line")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -116,3 +117,46 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.created_at:%Y-%m-%d %H:%M} {self.username} {self.action} {self.target}"
+
+
+class Sample(models.Model):
+    """A few numbers per host every few minutes, for small history graphs and "what changed"."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="samples")
+    created_at = models.DateTimeField(db_index=True)
+    data = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class CertCheck(models.Model):
+    """A TLS endpoint whose certificate expiry the hub watches (Settings -> Checks)."""
+
+    hostname = models.CharField(max_length=253)
+    port = models.PositiveIntegerField(default=443)
+    created_at = models.DateTimeField(auto_now_add=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    issuer = models.CharField(max_length=255, blank=True, default="")
+    error = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        ordering = ["hostname", "port"]
+        constraints = [models.UniqueConstraint(fields=["hostname", "port"], name="unique_cert_endpoint")]
+
+    def __str__(self):
+        return f"{self.hostname}:{self.port}"
+
+
+class ImageCheck(models.Model):
+    """Registry lookup for one image reference (repo:tag): has the tag moved, is there a newer version."""
+
+    ref = models.CharField(max_length=255, unique=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    latest_digest = models.CharField(max_length=80, blank=True, default="")
+    newer_tag = models.CharField(max_length=128, blank=True, default="")
+    error = models.CharField(max_length=300, blank=True, default="")
+
+    def __str__(self):
+        return self.ref

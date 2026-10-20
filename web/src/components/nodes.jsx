@@ -1,12 +1,8 @@
 import { Handle, Position } from "@xyflow/react";
+import { Meter, fmtBytes, memPct, worstDisk } from "./health.jsx";
 
 const hidden = { opacity: 0, pointerEvents: "none" };
 
-function fmtBytes(n) {
-  if (!n) return "";
-  const gb = n / 2 ** 30;
-  return gb >= 1 ? `${gb.toFixed(gb >= 10 ? 0 : 1)} GB` : `${Math.round(n / 2 ** 20)} MB`;
-}
 
 export function HostNode({ data, selected }) {
   const info = data.info || {};
@@ -23,6 +19,18 @@ export function HostNode({ data, selected }) {
             {[info.os, info.cpus && `${info.cpus} CPU`, fmtBytes(info.memory_bytes)].filter(Boolean).join(" · ")}
           </span>
         </div>
+        {info.health && (
+          <span className="host-meters">
+            <Meter label="CPU" pct={info.health.cpu_pct} warn={80} bad={95} />
+            <Meter label="RAM" pct={memPct(info.health)} warn={85} bad={95} />
+            {worstDisk(info.health) && <Meter label="Disk" pct={worstDisk(info.health).pct} title={`Fullest disk: ${worstDisk(info.health).mount} ${Math.round(worstDisk(info.health).pct)}%`} />}
+          </span>
+        )}
+        {(data.backups || []).some((b) => b.state !== "ok") && (
+          <span className="badge badge-bad" title="A backup failed or is overdue">
+            backup
+          </span>
+        )}
         {data.info?.observe === "on" && (
           <span className="badge badge-live" title="Observed traffic is on for this host">
             traffic
@@ -60,17 +68,27 @@ export function ContainerNode({ data, selected }) {
       <div className="ctr-top">
         <span className={`dot dot-${state}`} title={state} />
         <span className="ctr-name" title={data.name}>{data.name}</span>
+        {data.image_update?.state === "update" || data.image_update?.newer_tag ? (
+          <span className="ctr-update" title={data.image_update.newer_tag ? `Version ${data.image_update.newer_tag} is available` : "A newer image is published for this tag"}>
+            ↑
+          </span>
+        ) : null}
       </div>
       <div className="ctr-sub" title={data.image}>
         {data.compose?.project ? <span className="chip">{data.compose.project}</span> : null}
         <span className="ctr-image">{data.image}</span>
       </div>
-      {published.length > 0 && (
+      {(published.length > 0 || data.stats) && (
         <div className="ctr-ports">
           {published.slice(0, 3).map((p) => (
             <span key={`${p.public}-${p.private}-${p.protocol}`} className="port">:{p.public}</span>
           ))}
           {published.length > 3 && <span className="port">+{published.length - 3}</span>}
+          {data.stats && (
+            <span className="ctr-usage" title="CPU and memory now">
+              {data.stats.cpu_pct !== null && data.stats.cpu_pct !== undefined ? `${data.stats.cpu_pct.toFixed(data.stats.cpu_pct < 10 ? 1 : 0)}%` : "–"} · {fmtBytes(data.stats.mem_used)}
+            </span>
+          )}
         </div>
       )}
     </div>

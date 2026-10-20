@@ -33,6 +33,8 @@ def host_summary(host: Host) -> dict:
         "token_hint": host.token_hint,
         "created_at": host.created_at.isoformat() if getattr(host, "created_at", None) else None,
         "info": snap.get("host") or {},
+        "storage": _storage_summary(snap.get("storage")),
+        "backups": backup_status(snap.get("backups")),
         "counts": {
             "containers": len(containers),
             "running": sum(1 for c in containers if c.get("state") == "running"),
@@ -42,9 +44,44 @@ def host_summary(host: Host) -> dict:
     }
 
 
+def _storage_summary(storage):
+    if not storage:
+        return None
+    return {**storage, "volumes": (storage.get("volumes") or [])[:50]}
+
+
+def backup_status(items, now=None):
+    """Backups with "overdue" worked out: older than max_age_hours (default 26 h)."""
+    if items is None:
+        return None
+    from datetime import datetime, timezone as dt_timezone
+
+    now = now or timezone.now()
+    out = []
+    for b in items:
+        b = dict(b)
+        age_h = None
+        try:
+            finished = datetime.fromisoformat((b.get("finished_at") or "").replace("Z", "+00:00"))
+            if finished.tzinfo is None:
+                finished = finished.replace(tzinfo=dt_timezone.utc)
+            age_h = round((now - finished).total_seconds() / 3600, 1)
+        except ValueError:
+            pass
+        b["age_hours"] = age_h
+        b["overdue"] = age_h is None or age_h > (b.get("max_age_hours") or 26)
+        b["state"] = "failed" if not b.get("ok") else "overdue" if b["overdue"] else "ok"
+        out.append(b)
+    return out
+
+
 def build_graph(hosts=None) -> dict:
+    from .checks import image_status
+    from .models import ImageCheck
+
     hosts = list(hosts if hosts is not None else Host.objects.filter(enabled=True))
     nodes, edges = [], []
+    image_checks = {c.ref: c for c in ImageCheck.objects.all()}
 
     for host in hosts:
         hid = host.pk
@@ -113,6 +150,9 @@ def build_graph(hosts=None) -> dict:
         names = {c["name"] for c in containers}
         for c in containers:
             cid = f"ctr:{hid}:{c['name']}"
+            status = image_status(c, image_checks)
+            if status:
+                c["image_update"] = status
             stack_id = f"stack:{hid}:{(c.get('compose') or {}).get('project') or STANDALONE}"
             nodes.append({"id": cid, "type": "container", "host": host_node_id, "stack": stack_id, "data": c})
             mode = c.get("network_mode") or ""
@@ -163,10 +203,19 @@ def _host_ips(hosts) -> dict:
     return {ip: next(iter(owners)) for ip, owners in claims.items() if len(owners) == 1}
 
 
-def build_links(hosts, nodes) -> list[dict]:
+def _is_loopback_only(ips) -> bool:
+    return bool(ips) and all(str(ip).startswith("127.") or ip == "::1" for ip in ips)
+
+
+def build_links(hosts, nodes, public=None) -> list[dict]:
     """Edges for how containers talk: "depends" (Compose depends_on) and "flow" (observed TCP)."""
+    if public is None:
+        from .addresses import public_ips
+
+        public = public_ips()
     names = {n["id"]: (n["data"].get("name") or n["id"]) for n in nodes}
     ctr_by_ip, published, by_service = {}, {}, {}
+    exposed: dict[int, set] = {}  # public port -> containers publishing it beyond loopback, any host
     for h in hosts:
         for c in (h.snapshot or {}).get("containers") or []:
             cid = f"ctr:{h.pk}:{c['name']}"
@@ -176,6 +225,8 @@ def build_links(hosts, nodes) -> list[dict]:
             for p in c.get("ports") or []:
                 if p.get("public"):
                     published.setdefault((h.pk, p["public"]), cid)
+                    if not _is_loopback_only(p.get("ips")):
+                        exposed.setdefault(p["public"], set()).add(cid)
             compose = c.get("compose") or {}
             if compose.get("project") and compose.get("service"):
                 by_service[(h.pk, compose["project"], compose["service"])] = cid
@@ -190,6 +241,10 @@ def build_links(hosts, nodes) -> list[dict]:
             if (target_host, port) in published:
                 return published[(target_host, port)], "published-port"
             return f"host:{target_host}", "host"
+        if ip in public:  # your router's public address: whoever publishes that port, if only one does
+            owners = exposed.get(port) or set()
+            if len(owners) == 1:
+                return next(iter(owners)), "public-address"
         return None, None
 
     edges, flows = [], {}
@@ -224,6 +279,18 @@ def build_links(hosts, nodes) -> list[dict]:
                 snap.setdefault("host", {})["talks_to"] = talks_to
                 snap["host"]["talks_to_unresolved"] = unresolved
 
+    hub_ctr = _hub_container(hosts)
+    if hub_ctr:
+        for h in hosts:
+            snap = h.snapshot or {}
+            if h.is_local or not snap or h.status != "online":
+                continue
+            agent = next((f"ctr:{h.pk}:{c['name']}" for c in snap.get("containers") or [] if "servchart-agent" in (c.get("image") or "") or c.get("name") == "servchart-agent"), None)
+            src = agent or f"host:{h.pk}"
+            if any(s_ == src and t == hub_ctr for s_, t in flows):
+                continue  # already seen as real traffic
+            flows[(src, hub_ctr)] = {"ports": set(), "count": 0, "agent": True}
+
     for (src, target), f in sorted(flows.items()):
         src_host, target_host = _node_host(src), _node_host(target)
         edges.append(
@@ -235,9 +302,21 @@ def build_links(hosts, nodes) -> list[dict]:
                 "ports": sorted(f["ports"]),
                 "count": f["count"],
                 "cross_host": src_host != target_host,
+                **({"agent": True} if f.get("agent") else {}),
             }
         )
     return edges
+
+
+def _hub_container(hosts) -> str | None:
+    """The container running this hub, on the hub's own host (if it maps itself)."""
+    for h in hosts:
+        if not h.is_local:
+            continue
+        for c in (h.snapshot or {}).get("containers") or []:
+            if "servchart-hub" in (c.get("image") or "") or c.get("name") == "servchart-hub":
+                return f"ctr:{h.pk}:{c['name']}"
+    return None
 
 
 def _node_host(node_id: str) -> str:

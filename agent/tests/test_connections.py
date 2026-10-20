@@ -130,3 +130,17 @@ class ObserveTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtraIpTests(unittest.TestCase):
+    def test_hub_listed_public_ip_is_reported(self):
+        from servchart_agent import connections as c
+        from servchart_agent.__main__ import apply_hub_hints
+
+        rows = [("10.0.0.5", 50000, "73.173.202.24", 8843, "01"), ("10.0.0.5", 50001, "8.8.8.8", 443, "01")]
+        self.assertEqual(c.outbound(rows), [])
+        apply_hub_hints({"observe_ips": ["73.173.202.24", "not-an-ip"]})
+        try:
+            self.assertEqual(c.outbound(rows), [{"ip": "73.173.202.24", "port": 8843, "count": 1}])
+        finally:
+            apply_hub_hints({"observe_ips": []})

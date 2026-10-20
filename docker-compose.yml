@@ -15,6 +15,7 @@ services:
       # SERVCHART_CSRF_TRUSTED_ORIGINS: https://servchart.example.com
       # SERVCHART_DEMO: "1"                                   # also load fictional demo hosts
       SERVCHART_OBSERVE_CONNECTIONS: "1"                     # draw traffic between containers (needs pid: host)
+      SERVCHART_HOST_ROOT: /host                             # see every disk of this host (needs the /host mount below)
       # SERVCHART_ALLOW_LOGS: "1"                             # let admins view this host's container logs
       # SERVCHART_SMTP_HOST: smtp.example.com                 # + _USER, _PASSWORD, _FROM: emailed reports
       TZ: UTC
@@ -23,6 +24,8 @@ services:
       - servchart-data:/data
       # Lets the hub map its own host. Remove this line to disable.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Read-only view of the host, for disk usage and backup status files. Remove to show only Docker's disk.
+      - /:/host:ro,rslave
 
 volumes:
   servchart-data:

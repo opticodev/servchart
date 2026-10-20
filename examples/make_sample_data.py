@@ -41,9 +41,31 @@ def host(hostname, os_, cpus, mem_gb, containers, networks, ips=(), host_conns=(
         "schema": 1, "agent_version": "0.1.0", "collected_at": "2026-10-19T12:00:00+00:00",
         "host": {"hostname": hostname, "os": os_, "kernel": "6.8.0", "arch": "x86_64", "cpus": cpus,
                  "memory_bytes": mem_gb * 2**30, "docker_version": "27.3.1",
-                 "ips": list(ips), "observe": "on"},
-        "containers": containers, "networks": networks,
+                 "ips": list(ips), "observe": "on", "health": health(hostname, cpus, mem_gb)},
+        "containers": [with_stats(c) for c in containers], "networks": networks,
+        "backups": [{"name": "kopia", "ok": True, "finished_at": "2026-10-19T03:00:00+00:00", "message": "nightly", "max_age_hours": 26}],
+        "storage": {"images_bytes": 9 * 2**30, "images_count": 14, "images_unused": 2, "containers_rw_bytes": 300 * 2**20,
+                    "volumes_bytes": 4 * 2**30, "volumes_count": 6, "volumes_unused": 1, "build_cache_bytes": 0, "volumes": []},
     }
+
+
+def health(hostname, cpus, mem_gb):
+    """Fictional but stable numbers: one disk per demo host is getting full."""
+    seed = zlib.crc32(hostname.encode())
+    root_pct = 40 + seed % 50
+    return {
+        "cpu_pct": 5 + seed % 30, "load": [round(cpus * 0.2, 2), round(cpus * 0.15, 2), round(cpus * 0.1, 2)], "uptime_s": 86400 * (3 + seed % 40),
+        "mem_total": mem_gb * 2**30, "mem_available": int(mem_gb * 2**30 * (0.25 + (seed % 40) / 100)), "swap_total": 0, "swap_free": 0,
+        "disks": [{"mount": "/", "fs": "ext4", "total": 200 * 2**30, "used": int(200 * 2**30 * root_pct / 100), "pct": float(root_pct)}],
+        "disk_source": "host",
+    }
+
+
+def with_stats(c):
+    if c.get("state") == "running":
+        seed = zlib.crc32(c["name"].encode())
+        c["stats"] = {"cpu_pct": round((seed % 120) / 10, 1), "mem_used": (20 + seed % 600) * 2**20, "mem_limit": None}
+    return c
 
 
 edge = host("edge-01", "Debian GNU/Linux 12", 4, 8, [

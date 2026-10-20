@@ -33,6 +33,12 @@ class Command(BaseCommand):
         while True:
             close_old_connections()
             try:
+                from servchart_agent import connections
+
+                from inventory.addresses import public_ips
+
+                connections.EXTRA_IPS.clear()
+                connections.EXTRA_IPS.update(public_ips())
                 snap = clean_report(collect(client))
                 name = os.environ.get("SERVCHART_LOCAL_NAME") or snap["host"].get("hostname") or "local"
                 # the record this collector created (token_hint "local"), never an agent host

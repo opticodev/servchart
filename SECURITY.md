@@ -16,6 +16,8 @@ Please **don't open a public issue**. Use GitHub's private vulnerability reporti
 - Single sign-on headers are trusted only from the proxy addresses listed in `SERVCHART_SSO_TRUSTED_PROXIES`, and never on the agent or health endpoints.
 - Container logs are off unless a host's agent sets `SERVCHART_ALLOW_LOGS=1`. Only admins can request them. The agent only answers for containers that exist, redacts secret-looking values, and is polled over its own outbound connection. The hub deletes results once read, and every view is recorded in the activity log.
 - Uploaded logos and favicons are identified by their bytes. SVGs containing scripts, event handlers or embedded documents are rejected, and images are served with `nosniff` and a sandboxing Content-Security-Policy.
+- With the host root mounted (`/:/host:ro`), the agent only measures disk usage of mount points and reads backup status files (JSON, size-limited, never executed).
+- Image update checks are made by the hub, anonymously, with public image names and tags only; they can be turned off. Certificate checks only connect to addresses an admin added.
 - CSV exports prefix cells starting with `=`, `+`, `-` or `@` to prevent spreadsheet formula injection.
 - OpenID Connect uses the authorization code flow with PKCE, state and nonce. ID tokens are fetched server to server over verified HTTPS, and checked for issuer, audience and expiry.
 
