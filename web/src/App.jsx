@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow } from "@xyflow/react";
 import { api } from "./api.js";
-import { filterEdges, layoutGraph } from "./layout.js";
+import { filterEdges, layoutGraph, relatedTo } from "./layout.js";
+import { routeEdges } from "./routing.js";
 import { nodeTypes } from "./components/nodes.jsx";
+import { edgeTypes } from "./components/edges.jsx";
 import DetailsPanel from "./components/DetailsPanel.jsx";
 import AddHostDialog from "./components/AddHostDialog.jsx";
 import Legend from "./components/Legend.jsx";
@@ -69,6 +71,9 @@ function MapView() {
   const [hideStopped, setHideStopped] = useStored("servchart.hideStopped", false);
   const [groupStacks, setGroupStacks] = useStored("servchart.groupStacks", true);
   const [linkMode, setLinkMode] = useStored("servchart.linkMode", "overview");
+  const [lineStyle, setLineStyle] = useStored("servchart.lineStyle", "angled");
+  const [hoverEdge, setHoverEdge] = useState(null);
+  const [hoverNode, setHoverNode] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [dialog, setDialog] = useState(null); // {mode:'add'} | {mode:'rotate', host}
   const [view, setView] = useState(() => (window.location.hash === "#settings" ? "settings" : "map"));
@@ -127,33 +132,65 @@ function MapView() {
     setNodes((ns) => applyNodeChanges(changes, ns));
   }, []);
 
+  const names = useMemo(() => new Map((graph?.nodes || []).map((n) => [n.id, n.data?.name || n.id])), [graph]);
+
+  const current = nodes.length ? nodes : laid.nodes;
+  const shown = useMemo(() => filterEdges(laid.edges, current, linkMode, selectedId), [laid, current, linkMode, selectedId]);
+
+  // Route lines through the gaps between cards. Recomputed only when the cards move or the set of
+  // lines changes (not on hover); while a card is being dragged, lines fall back to simple shapes.
+  const dragging = current.some((n) => n.dragging);
+  const geometryKey = useMemo(() => current.map((n) => `${n.id}:${n.position.x},${n.position.y}`).join("|"), [current]);
+  const shownKey = shown.filter((e) => e.data.kind === "flow" || e.data.kind === "depends").map((e) => e.id).join("|");
+  const routes = useMemo(() => {
+    if (dragging) return new Map();
+    const lines = shown.filter((e) => e.data.kind === "flow" || e.data.kind === "depends");
+    return routeEdges(current, lines);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geometryKey, shownKey, dragging]);
+
   const edges = useMemo(() => {
-    const shown = filterEdges(laid.edges, nodes.length ? nodes : laid.nodes, linkMode, selectedId);
+    const isSel = relatedTo(current, selectedId);
+    // focus: the node under the mouse, else the selection. Its outgoing lines are blue, incoming green,
+    // everything else fades, so you can see where each line starts and ends.
+    const focusId = hoverNode || selectedId;
+    const inFocus = relatedTo(current, focusId);
+    const few = shown.length <= 25;
+    const curved = lineStyle === "curved";
     return shown.map((e) => {
       const d = e.data;
-      const active = selectedId && (e.source === selectedId || e.target === selectedId);
-      const cls = `${e.className}${d.cross_host ? " edge-cross" : ""}${d.agent ? " edge-agent" : ""}${active ? " is-active" : ""}`;
-      if (d.kind === "flow") {
+      const active = !!selectedId && (isSel(e.source) || isSel(e.target));
+      const out = !!focusId && inFocus(e.source) && !inFocus(e.target);
+      const inc = !!focusId && inFocus(e.target) && !inFocus(e.source);
+      const inside = !!focusId && inFocus(e.source) && inFocus(e.target);
+      const hovered = hoverEdge === e.id;
+      const faded = (!!focusId && !out && !inc && !inside && !hovered) || (!!hoverEdge && !hovered);
+      const dir = out ? " is-out" : inc ? " is-in" : "";
+      const cls = `${e.className}${d.cross_host ? " edge-cross" : ""}${d.agent ? " edge-agent" : ""}${active ? " is-active" : ""}${dir}${faded ? " is-faded" : ""}${hovered ? " is-hovered" : ""}`;
+      const color = inc ? "var(--ok)" : out ? "var(--accent)" : d.kind === "depends" ? "var(--depends)" : d.cross_host ? "var(--cross)" : "var(--flow)";
+      // hovering a line spells out both ends
+      const text = hovered ? `${names.get(e.source) || e.source} → ${names.get(e.target) || e.target}${d.ports?.length ? "  " + portLabel(d) : ""}` : portLabel(d);
+      const showLabel = d.kind === "flow" && !faded && (few || active || out || inc || hovered);
+      if (d.kind === "flow" || d.kind === "depends") {
         return {
           ...e,
           className: cls,
+          type: "lane",
+          data: { ...d, curved, route: routes.get(e.id) },
           sourceHandle: "out",
           targetHandle: "in",
-          animated: !!active, // moving dashes only on the selection's lines
-          label: portLabel(d),
+          animated: d.kind === "flow" && (active || out || inc),
+          label: showLabel ? text : undefined,
           labelShowBg: true,
           labelBgPadding: [4, 2],
           labelBgBorderRadius: 4,
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          zIndex: 5,
+          markerEnd: { type: d.kind === "flow" ? MarkerType.ArrowClosed : MarkerType.Arrow, width: 16, height: 16, color },
+          zIndex: hovered || out || inc ? 2100 : 2000, // above the cards (even a selected card)
         };
-      }
-      if (d.kind === "depends") {
-        return { ...e, className: cls, sourceHandle: "out", targetHandle: "in", markerEnd: { type: MarkerType.Arrow, width: 14, height: 14 }, zIndex: 4 };
       }
       return { ...e, className: cls, animated: !!active };
     });
-  }, [laid, nodes, linkMode, selectedId]);
+  }, [current, shown, routes, selectedId, lineStyle, hoverEdge, hoverNode, names]);
 
   const selectedNode = useMemo(() => graph?.nodes.find((n) => n.id === selectedId) || null, [graph, selectedId]);
   const selectedHost = useMemo(() => (selectedNode ? graph.nodes.find((n) => n.id === selectedNode.host)?.data || null : null), [graph, selectedNode]);
@@ -263,6 +300,11 @@ function MapView() {
             onNodesChange={onNodesChange}
             onNodeClick={(_, n) => setSelectedId(n.id)}
             onPaneClick={() => setSelectedId(null)}
+            edgeTypes={edgeTypes}
+            onNodeMouseEnter={(_, n) => n.type === "container" && setHoverNode(n.id)}
+            onNodeMouseLeave={() => setHoverNode(null)}
+            onEdgeMouseEnter={(_, e) => setHoverEdge(e.id)}
+            onEdgeMouseLeave={() => setHoverEdge(null)}
             nodesConnectable={false}
             minZoom={0.1}
             maxZoom={2}
@@ -273,7 +315,7 @@ function MapView() {
             <MiniMap pannable zoomable nodeStrokeWidth={2} />
           </ReactFlow>
         )}
-        {graph && hosts.length > 0 && <Legend hosts={hosts} linkMode={linkMode} />}
+        {graph && hosts.length > 0 && <Legend hosts={hosts} linkMode={linkMode} lineStyle={lineStyle} onLineStyle={setLineStyle} />}
         {view === "settings" && me && (
           <Settings
             key={settingsRev}

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+- **Angled lines.** Connections are drawn with horizontal and vertical segments and rounded corners instead of curves. Switch back with **Lines: curved** in the legend.
+- **Lines go around cards.** Lines are routed through the gaps between cards, stacks and servers (down the middle where there is room) instead of across them, with as few bends as possible; lines sharing a gap are spread apart. Columns of containers are a little further apart to make room. While you drag a card, lines are drawn simply and re-routed when you let go. Lines between servers only pass through their own two servers and otherwise use the gaps between server boxes, and lines going the same way are bundled into one path, like cables in a tray. **Lines: curved** follows the same routes with wide, smooth turns.
+- **See where lines go.** Point at a container: lines it calls turn blue, lines calling it turn green, the rest fade. Point at a line to see "from → to" with its ports. Lines are drawn above the cards, and parallel lines are spread apart instead of merging into one.
+- **Laid out by dependencies.** Stacks on a server are ordered like the containers inside them: stacks that call others on the left, the stacks they depend on to the right. Containers are reordered within each column to cross fewer lines, and long chains keep their first steps in separate columns. Servers are arranged the same way: servers that call others on the left, a server many others send to (a log or security server, say) on the right, so lines between servers run left to right instead of looping around.
+- **Fewer labels.** Port labels show when there are only a few lines, on the selection's lines, or when you hover a line, instead of piling up.
+- "Reports to ServChart" lines only appear for the selected server (or with Links: everything), so they no longer cross the whole map.
+
 ## 0.4.0
 
 - **Server health.** CPU, RAM and fullest disk on every server box (orange at 85%, red at 95%); load, uptime, swap and every disk in the details. Needs the host root mounted read-only for all disks (`-v /:/host:ro,rslave -e SERVCHART_HOST_ROOT=/host`, now in the install command).

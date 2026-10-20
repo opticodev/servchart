@@ -17,6 +17,8 @@ export const SIZES = {
   container: { w: 210, h: 66 },
   network: { w: 180, h: 34 },
   gap: 14,
+  colGap: 30, // between container columns and rows: room for lines to run between cards
+  rowGap: 24,
   pad: 18,
   header: 64,
   stackHeader: 46,
@@ -71,23 +73,46 @@ export function layeredSlots(members, edges, maxCols, minCols = 1) {
 
   const layers = Math.max(...ids.map((_, i) => (linked[i] ? layer[i] : 0))) + 1;
   const cols = Math.min(maxCols, Math.max(layers, minCols)); // extra columns take the loners
-  const colOf = (i) => (layers <= cols ? layer[i] : Math.floor((layer[i] * cols) / layers));
+  // more layers than columns (long chains, cycles): keep the first ones apart, merge the deepest
+  const colOf = (i) => Math.min(layer[i], cols - 1);
   const columns = Array.from({ length: cols }, () => []);
   ids.forEach((_, i) => linked[i] && columns[colOf(i)].push(i));
 
-  // order each column by the average row of its neighbours in the previous one (fewer crossings)
+  // order each column by the average row of its neighbours (barycenter), sweeping left-to-right
+  // then right-to-left a few times: connected containers end up level, so lines run straight across
   const rowOf = new Map();
   columns.forEach((col) => col.forEach((i, r) => rowOf.set(i, r)));
-  for (let pass = 0; pass < 2; pass++) {
-    for (let c = 1; c < cols; c++) {
-      const score = (i) => {
-        const ns = [...inn[i], ...out[i]].filter((j) => colOf(j) < c && linked[j]).map((j) => rowOf.get(j));
-        return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : rowOf.get(i);
-      };
-      columns[c].sort((a, b) => score(a) - score(b));
-      columns[c].forEach((i, r) => rowOf.set(i, r));
-    }
+  const crossings = () => {
+    let n = 0;
+    const es = [];
+    ids.forEach((_, i) => linked[i] && out[i].forEach((j) => es.push([colOf(i), rowOf.get(i), colOf(j), rowOf.get(j)])));
+    for (let a = 0; a < es.length; a++)
+      for (let b = a + 1; b < es.length; b++) {
+        const [c1, r1, d1, s1] = es[a];
+        const [c2, r2, d2, s2] = es[b];
+        if (c1 === c2 && d1 === d2 && (r1 - r2) * (s1 - s2) < 0) n++;
+      }
+    return n;
+  };
+  const sweep = (c, side) => {
+    const score = (i) => {
+      const ns = [...inn[i], ...out[i]].filter((j) => linked[j] && (side < 0 ? colOf(j) < c : colOf(j) > c)).map((j) => rowOf.get(j));
+      return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : rowOf.get(i);
+    };
+    columns[c].sort((a, b) => score(a) - score(b) || rowOf.get(a) - rowOf.get(b));
+    columns[c].forEach((i, r) => rowOf.set(i, r));
+  };
+  let best = { n: crossings(), cols: columns.map((c) => [...c]) };
+  for (let pass = 0; pass < 4; pass++) {
+    for (let c = 1; c < cols; c++) sweep(c, -1);
+    for (let c = cols - 2; c >= 0; c--) sweep(c, 1);
+    const n = crossings();
+    if (n < best.n) best = { n, cols: columns.map((c) => [...c]) };
   }
+  best.cols.forEach((col, c) => {
+    columns[c] = col;
+    col.forEach((i, r) => rowOf.set(i, r));
+  });
   // containers that don't talk to the others fill the shortest columns
   ids.forEach((_, i) => {
     if (linked[i]) return;
@@ -97,6 +122,135 @@ export function layeredSlots(members, edges, maxCols, minCols = 1) {
   const slots = ids.map(() => null);
   columns.forEach((col, c) => col.forEach((i, r) => (slots[i] = { col: c, row: r })));
   return slots;
+}
+
+// Stacks on one server, ordered like containers inside a stack: stacks that call others first (left),
+// the stacks they call after them (right), so lines between stacks also run left to right.
+// Stacks with no links keep their alphabetical place after the linked ones.
+export function orderStacks(groups, edges) {
+  const stackOf = new Map();
+  groups.forEach((g, k) => g.members.forEach((m) => stackOf.set(m.id, k)));
+  const out = groups.map(() => new Set());
+  const inn = groups.map(() => new Set());
+  for (const e of edges) {
+    if ((e.kind !== "flow" && e.kind !== "depends") || e.agent) continue;
+    const a = stackOf.get(e.source);
+    const b = stackOf.get(e.target);
+    if (a === undefined || b === undefined || a === b) continue;
+    out[a].add(b);
+    inn[b].add(a);
+  }
+  const layer = groups.map(() => 0);
+  const seen = groups.map(() => 0);
+  const order = [];
+  const visit = (i) => {
+    seen[i] = 1;
+    for (const j of out[i]) if (!seen[j]) visit(j);
+    order.push(i);
+  };
+  groups.forEach((_, i) => !seen[i] && !inn[i].size && visit(i));
+  groups.forEach((_, i) => !seen[i] && visit(i));
+  order.reverse();
+  const pos = new Map(order.map((i, k) => [i, k]));
+  for (const i of order) for (const j of out[i]) if (pos.get(j) > pos.get(i)) layer[j] = Math.max(layer[j], layer[i] + 1);
+  const linked = (i) => out[i].size + inn[i].size > 0;
+  return groups
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => (linked(b.i) - linked(a.i)) || (linked(a.i) ? layer[a.i] - layer[b.i] : 0) || a.i - b.i)
+    .map((x) => x.g);
+}
+
+// Put servers that talk to each other next to each other, so lines between them stay short:
+// start with the busiest server, then repeatedly add the one with the most traffic to the last placed.
+export function orderHosts(byHost, edges) {
+  const hostOf = (id) => (id.startsWith("host:") ? id : "host:" + id.split(":")[1]);
+  const w = new Map();
+  const add = (a, b, n) => {
+    if (a === b || !byHost.has(a) || !byHost.has(b)) return;
+    for (const [x, y] of [[a, b], [b, a]]) {
+      if (!w.has(x)) w.set(x, new Map());
+      w.get(x).set(y, (w.get(x).get(y) || 0) + n);
+    }
+  };
+  for (const e of edges) if (e.kind === "flow" && !e.agent) add(hostOf(e.source), hostOf(e.target), 1);
+  const ids = [...byHost.keys()];
+  const total = (id) => [...(w.get(id)?.values() || [])].reduce((a, b) => a + b, 0);
+  const left = new Set(ids);
+  const order = [];
+  while (left.size) {
+    let next;
+    const last = order[order.length - 1];
+    if (last && w.has(last)) {
+      next = [...left].sort((a, b) => (w.get(last).get(b) || 0) - (w.get(last).get(a) || 0) || total(b) - total(a))[0];
+      if (!w.get(last).get(next)) next = undefined;
+    }
+    next = next || [...left].sort((a, b) => total(b) - total(a) || ids.indexOf(a) - ids.indexOf(b))[0];
+    order.push(next);
+    left.delete(next);
+  }
+  return order.map((id) => [id, byHost.get(id)]);
+}
+
+// Position the server boxes. Servers that talk are laid out like containers in a stack: servers that
+// call others in the left columns, the ones they call further right (a server many others report to,
+// such as a log or security server, ends up on the right), servers in the same column stacked
+// vertically. Without links between servers they wrap in rows as before.
+export function placeHosts(placed, graph, maxCols = 4) {
+  const { hostGap, rowWidth } = SIZES;
+  const hostOfNode = new Map(graph.nodes.map((n) => [n.id, n.type === "host" ? n.id : n.host]));
+  const hostEdges = [];
+  for (const e of graph.edges) {
+    if (e.kind !== "flow" || e.agent) continue; // "reports to ServChart" lines would pull every server left of the hub
+    const a = hostOfNode.get(e.source);
+    const b = hostOfNode.get(e.target);
+    if (a && b && a !== b) hostEdges.push({ kind: "flow", source: a, target: b });
+  }
+  const slots = placed.length > 1 ? layeredSlots(placed, hostEdges, maxCols) : null;
+  if (!slots) {
+    let x = 0;
+    let y = 0;
+    let rowHeight = 0;
+    for (const p of placed) {
+      if (x > 0 && x + p.width > rowWidth) {
+        x = 0;
+        y += rowHeight + hostGap;
+        rowHeight = 0;
+      }
+      p.node.position = { x, y };
+      x += p.width + hostGap;
+      rowHeight = Math.max(rowHeight, p.height);
+    }
+    return;
+  }
+  const cols = Math.max(...slots.map((s) => s.col)) + 1;
+  const colW = Array.from({ length: cols }, () => 0);
+  placed.forEach((p, i) => (colW[slots[i].col] = Math.max(colW[slots[i].col], p.width)));
+  const colX = [];
+  colW.reduce((x, w, c) => ((colX[c] = x), x + w + hostGap * 2), 0); // wider gap: room for lines between servers
+  const inCol = (c) =>
+    placed
+      .map((p, i) => ({ p, s: slots[i] }))
+      .filter(({ s }) => s.col === c)
+      .sort((a, b) => a.s.row - b.s.row);
+  const colH = (c) => inCol(c).reduce((h, { p }) => h + p.height + hostGap, -hostGap);
+  const tallest = Math.max(...Array.from({ length: cols }, (_, c) => colH(c)));
+  for (let c = 0; c < cols; c++) {
+    let y = Math.round((tallest - colH(c)) / 2); // centred, so lines to a lone server split up and down
+    inCol(c).forEach(({ p }) => {
+        p.node.position = { x: colX[c], y };
+        y += p.height + hostGap;
+      });
+  }
+}
+
+// For a selected node: does an edge end touch it or something inside it (a stack's or host's members)?
+export function relatedTo(nodes, selectedId) {
+  const parentOf = new Map(nodes.map((n) => [n.id, n.parentId]));
+  return (id) => {
+    if (!selectedId) return false;
+    for (let cur = id; cur; cur = parentOf.get(cur)) if (cur === selectedId) return true;
+    return false;
+  };
 }
 
 function matchesQuery(q, d, stack) {
@@ -118,7 +272,7 @@ function matchesQuery(q, d, stack) {
 
 export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter = "all", groupStacks = true } = {}) {
   const q = query.trim().toLowerCase();
-  const { container: C, network: N, gap, pad, header, stackHeader, stackPad } = SIZES;
+  const { container: C, network: N, gap, colGap, rowGap, pad, header, stackHeader, stackPad } = SIZES;
 
   const byHost = new Map();
   for (const n of graph.nodes) if (n.type === "host") byHost.set(n.id, { host: n, networks: [], stacks: new Map(), containers: [] });
@@ -135,11 +289,9 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
 
   const rfNodes = [];
   const visible = new Set();
-  let x = 0;
-  let y = 0;
-  let rowHeight = 0;
+  const placed = []; // host boxes, positioned once all are sized
 
-  for (const [hostId, b] of byHost) {
+  for (const [hostId, b] of orderHosts(byHost, graph.edges)) {
     if (hostFilter !== "all" && hostFilter !== hostId) continue;
 
     // networks actually used by the visible containers
@@ -159,9 +311,12 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
     let groups;
     if (groupStacks) {
       for (const c of b.containers) b.stacks.get(c.stack)?.members.push(c);
-      groups = [...b.stacks.values()]
-        .filter((g) => g.members.length)
-        .sort((a, z) => (a.node.id.endsWith(STANDALONE_SUFFIX) - z.node.id.endsWith(STANDALONE_SUFFIX)) || (a.node.data.name || "").localeCompare(z.node.data.name || ""));
+      groups = orderStacks(
+        [...b.stacks.values()]
+          .filter((g) => g.members.length)
+          .sort((a, z) => (a.node.id.endsWith(STANDALONE_SUFFIX) - z.node.id.endsWith(STANDALONE_SUFFIX)) || (a.node.data.name || "").localeCompare(z.node.data.name || "")),
+        graph.edges
+      );
     } else {
       groups = [{ node: null, members: [...b.containers] }];
     }
@@ -181,13 +336,13 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
       }
       const innerPad = g.node ? stackPad : 0;
       g.nets = g.node ? localNets.get(g.node.id) || [] : [];
-      const innerW = g.cols * C.w + (g.cols - 1) * gap;
+      const innerW = g.cols * C.w + (g.cols - 1) * colGap;
       g.netCols = Math.max(1, Math.floor((innerW + gap) / (N.w + gap)));
       const netRows = Math.ceil(g.nets.length / g.netCols);
       g.netH = netRows ? netRows * (N.h + 8) - 8 + 12 : 0;
       const top = (g.node ? stackHeader : 0) + g.netH;
       g.w = innerW + innerPad * 2;
-      g.h = top + g.rows * C.h + (g.rows - 1) * gap + innerPad;
+      g.h = top + g.rows * C.h + (g.rows - 1) * rowGap + innerPad;
     }
 
     // shelf-pack groups inside the host
@@ -215,13 +370,9 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
     const width = innerW + pad * 2;
     const height = header + netBlockH + gy + Math.max(shelfH, C.h) + pad;
 
-    if (x > 0 && x + width > SIZES.rowWidth) {
-      x = 0;
-      y += rowHeight + SIZES.hostGap;
-      rowHeight = 0;
-    }
-
-    rfNodes.push({ id: hostId, type: "host", position: { x, y }, data: b.host.data, style: { width, height } });
+    const hostNode = { id: hostId, type: "host", position: { x: 0, y: 0 }, data: b.host.data, style: { width, height } };
+    placed.push({ id: hostId, node: hostNode, width, height });
+    rfNodes.push(hostNode);
     visible.add(hostId);
 
     nets.forEach((n, i) => {
@@ -277,7 +428,7 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
           type: "container",
           parentId,
           extent: "parent",
-          position: { x: ox + g.slots[i].col * (C.w + gap), y: oy + g.slots[i].row * (C.h + gap) },
+          position: { x: ox + g.slots[i].col * (C.w + colGap), y: oy + g.slots[i].row * (C.h + rowGap) },
           data: { ...m.data, dimmed: !matchesQuery(q, m.data, g.node?.data) },
           style: { width: C.w, height: C.h },
         });
@@ -285,9 +436,8 @@ export function layoutGraph(graph, { hideStopped = false, query = "", hostFilter
       });
     }
 
-    x += width + SIZES.hostGap;
-    rowHeight = Math.max(rowHeight, height);
   }
+  placeHosts(placed, graph);
 
   const rfEdges = graph.edges
     .filter((e) => visible.has(e.source) && visible.has(e.target))
@@ -321,6 +471,8 @@ export function filterEdges(edges, nodes, mode, selectedId) {
   // a Compose dependency that is also seen as traffic: draw the traffic line only
   const seen = new Set(edges.filter((e) => e.data.kind === "flow").map((e) => `${e.source}>${e.target}`));
   if (mode !== "all") edges = edges.filter((e) => e.data.kind !== "depends" || !seen.has(`${e.source}>${e.target}`));
+  // "reports to ServChart" lines: only for the selection (every agent has one, they'd cross the whole map)
+  if (mode !== "all") edges = edges.filter((e) => !e.data.agent || touches(e.source) || touches(e.target));
 
   if (mode !== "overview") {
     return edges.filter((e) => {

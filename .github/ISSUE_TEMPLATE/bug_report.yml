@@ -1,0 +1,61 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Please **remove secrets, public IPs and domain names** you don't want to share from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run the agent with ...
+        2. Open ...
+        3. See ...
+  - type: input
+    id: version
+    attributes:
+      label: ServChart version
+      description: Hub version (bottom of the report, or the image tag) and agent version (`servchart-agent --version`).
+      placeholder: hub 0.4.0, agent 0.4.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      multiple: true
+      options:
+        - Hub with Docker Compose
+        - Hub with docker run
+        - Agent in Docker
+        - Agent with pipx/pip
+        - Other (explain below)
+  - type: input
+    id: platform
+    attributes:
+      label: Host OS, Docker version, architecture
+      placeholder: Ubuntu 24.04, Docker 29.0.1, amd64 / Synology DSM 7.2 / Raspberry Pi OS arm64
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from `docker logs servchart-hub` or `docker logs servchart-agent`.
+      render: text
+  - type: textarea
+    id: snapshot
+    attributes:
+      label: Agent snapshot (optional)
+      description: Output of `python -m servchart_agent --stdout` (or `docker exec servchart-agent python -m servchart_agent --stdout`), trimmed to the part that matters. It contains no environment variables, but check names and paths before posting.
+      render: json

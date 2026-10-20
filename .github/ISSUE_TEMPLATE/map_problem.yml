@@ -1,0 +1,52 @@
+name: Map looks wrong
+description: A missing or wrong line, stack, host or container on the map.
+labels: ["mapping", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mapping problems usually depend on your network setup, so a few details help a lot. Replace real IPs and names with placeholders if you prefer (keep them consistent).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What's wrong?
+      options:
+        - A connection I expect is missing
+        - A connection points to the wrong container/host
+        - A container is in the wrong stack / standalone
+        - A host shows the wrong data or appears twice
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should the map show?
+      placeholder: "app on server A talks to postgres on server B (port 5432) through WireGuard, but no line is drawn."
+    validations:
+      required: true
+  - type: textarea
+    id: network
+    attributes:
+      label: How do these servers/containers reach each other?
+      description: LAN, VPN (Tailscale/Headscale/WireGuard), port forward through a router, reverse proxy, Cloudflare tunnel, host network mode, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: agent
+    attributes:
+      label: How is the agent started on the hosts involved?
+      description: The `docker run` / compose snippet (remove the token). Important bits are `--pid host` and `SERVCHART_OBSERVE_CONNECTIONS=1`.
+      render: yaml
+  - type: textarea
+    id: details
+    attributes:
+      label: Details panel
+      description: For the source container or host, paste what "Talks to" and "Unknown" show in the details panel.
+  - type: input
+    id: version
+    attributes:
+      label: ServChart version (hub and agents)
+      placeholder: hub 0.4.0, agents 0.4.0
+    validations:
+      required: true

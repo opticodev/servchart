@@ -366,6 +366,10 @@ cd web && npm install && npm run dev
 cd agent && python -m unittest discover -s tests
 ```
 
+## Contributing
+
+Contributions are very welcome: bug reports, setups we haven't tested (Synology, Unraid, TrueNAS, Raspberry Pi, Podman), docs and code. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the issues labelled [`good first issue`](https://github.com/opticodev/servchart/labels/good%20first%20issue) or [`help wanted`](https://github.com/opticodev/servchart/labels/help%20wanted); the [roadmap issue](https://github.com/opticodev/servchart/issues?q=is%3Aissue+label%3Aroadmap) shows what's next. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Releasing
 
 See [docs/RELEASING.md](docs/RELEASING.md). In short: bump the version, then push a `vX.Y.Z` tag. GitHub Actions publishes both images to Docker Hub and GHCR, and the agent to PyPI.

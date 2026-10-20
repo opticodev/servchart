@@ -304,3 +304,16 @@ a.btn { text-decoration: none; display: inline-block; }
 .react-flow__edge.edge-agent .react-flow__edge-path { stroke-dasharray: 2 5; opacity: 0.7; }
 .addresses { margin-top: 24px; }
 .password-form textarea { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: 13px ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
+.legend-style { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.legend-style button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; padding: 1px 8px; font: inherit; cursor: pointer; }
+.legend-style button.is-active { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+.react-flow__edge:hover .react-flow__edge-path { stroke-width: 3; }
+/* focus: outgoing / incoming lines of the hovered or selected item, others fade */
+.react-flow__edge.is-faded { opacity: 0.12; }
+.react-flow__edge.is-out .react-flow__edge-path { stroke: var(--accent); stroke-width: 2.6; }
+.react-flow__edge.is-in .react-flow__edge-path { stroke: var(--ok); stroke-width: 2.6; }
+.react-flow__edge.is-hovered .react-flow__edge-path { stroke-width: 3.2; }
+.react-flow__edge.is-hovered .react-flow__edge-text { font-weight: 700; }
+.react-flow__edges, .react-flow__edge { transition: opacity 0.12s; }
+.lg-in { stroke: var(--ok); stroke-width: 2.5; }
+.lg-out { stroke: var(--accent); stroke-width: 2.5; }

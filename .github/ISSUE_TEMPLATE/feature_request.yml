@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement or new capability.
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ServChart is a **map and audit** of Docker infrastructure. It doesn't aim to manage containers or replace a full monitoring stack. Ideas that fit are very welcome!
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation, not just the solution. "I can't tell which of my servers ..." beats "add a button".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like ServChart to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you handle it today?
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself (a maintainer will help you get started)
