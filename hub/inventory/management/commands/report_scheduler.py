@@ -52,13 +52,13 @@ def background_checks(state: dict, now=None) -> None:
     from inventory import checks, history
 
     t = now or _t.time()
-    if t - state.get("certs", 0) >= 600:  # each certificate itself is re-checked every SERVCHART_CERT_CHECK_HOURS
+    if t - state.get("certs", float("-inf")) >= 600:  # each certificate itself is re-checked every SERVCHART_CERT_CHECK_HOURS
         state["certs"] = t
         checks.run_cert_checks()
-    if t - state.get("images", 0) >= 900:
+    if t - state.get("images", float("-inf")) >= 900:
         state["images"] = t
         checks.run_image_checks()
-    if t - state.get("purge", 0) >= 3600:
+    if t - state.get("purge", float("-inf")) >= 3600:
         state["purge"] = t
         history.purge()
 

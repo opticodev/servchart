@@ -900,7 +900,7 @@ class CheckTests(AdminClientMixin, TestCase):
 
         tags = ["1.27.2", "1.27.4", "1.28.0", "1.28.0-alpine", "v1.29.0", "latest", "1.27", "2.0.0-rc1"]
         self.assertEqual(newer_tag("1.27.2", tags), "1.28.0")
-        self.assertEqual(newer_tag("1.27.4-alpine", tags + ["1.27.5-alpine"]), "1.27.5-alpine")
+        self.assertEqual(newer_tag("1.27.4-alpine", tags + ["1.27.5-alpine"]), "1.28.0-alpine")  # same "-alpine" flavour, highest wins
         self.assertEqual(newer_tag("v1.28.0", tags), "v1.29.0")
         self.assertIsNone(newer_tag("latest", tags))
         self.assertIsNone(newer_tag("1.28.0", ["1.27.0"]))
