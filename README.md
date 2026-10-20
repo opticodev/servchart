@@ -64,8 +64,9 @@ Host processes (say, nginx installed on the host) get lines from the host box. C
 
 The **Links** menu chooses what to draw:
 
-- **Traffic & dependencies** (the default): those lines always, plus network attachments for whatever you've selected.
-- **Everything.**
+- **Overview** (the default): one line per pair of stacks on a server and one per pair of servers, labeled with the ports. Click a server, stack or container to see its own lines in full, including Compose dependencies and lines inside a stack.
+- **Every connection:** every traffic and dependency line, plus network attachments for whatever you've selected.
+- **Everything:** network attachments too.
 - **Selection only.**
 
 Networks used by a single stack are drawn inside that stack. Only shared networks sit at the top of the host.

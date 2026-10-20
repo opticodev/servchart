@@ -266,3 +266,6 @@ a.btn { text-decoration: none; display: inline-block; }
 .logs-toolbar label.toggle { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--fg); font-size: 13px; }
 .logs-toolbar input[type="checkbox"] { width: auto; margin: 0; }
 .logs-toolbar select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; }
+/* overview: merged lines are a bit heavier */
+.react-flow__edge.edge-agg .react-flow__edge-path { stroke-width: 2.4; }
+.react-flow__edge.edge-agg.edge-cross .react-flow__edge-path { stroke-width: 3; }

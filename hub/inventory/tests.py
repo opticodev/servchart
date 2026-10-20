@@ -507,7 +507,7 @@ from django.core import mail  # noqa: E402
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
 from django.utils import timezone  # noqa: E402
 
-from .models import AuditEvent, LogRequest, SiteSettings  # noqa: E402
+from .models import AuditEvent, LogRequest  # noqa: E402
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 
@@ -755,3 +755,28 @@ class HeaderPathTests(TestCase):
         self.assertTrue(unprotected("/api/v1/agent/commands"))
         self.assertFalse(unprotected("/api/v1/report.json"))
         self.assertFalse(unprotected("/api/v1/report/send"))
+
+
+class LocalCollectorTests(TestCase):
+    def test_collector_never_writes_into_agent_hosts(self):
+        from unittest import mock
+
+        from django.core.management import call_command
+
+        from inventory.models import hash_token
+
+        agent, _ = Host.create_with_token("a-agent")  # sorts before the hub's own record
+        Host.objects.filter(pk=agent.pk).update(is_local=True)  # e.g. ticked by mistake in 0.3.0's admin
+        local = Host.objects.create(name="z-hub", is_local=True, token_hash=hash_token("x"), token_hint="local")
+        snap = copy.deepcopy(REPORT)
+        with mock.patch("servchart_agent.collect.collect", return_value=snap), mock.patch("servchart_agent.docker_api.DockerClient"):
+            call_command("local_agent", once=True)
+        local.refresh_from_db()
+        agent.refresh_from_db()
+        self.assertEqual(len(local.snapshot["containers"]), 3)
+        self.assertEqual(agent.snapshot, {})
+
+    def test_is_local_not_editable_in_admin(self):
+        from django.contrib import admin
+
+        self.assertIn("is_local", admin.site._registry[Host].readonly_fields)

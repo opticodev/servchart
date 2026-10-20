@@ -86,6 +86,8 @@ export function StackNode({ data, selected }) {
   const allUp = data.running === data.total;
   return (
     <div className={`stack-node ${data.standalone ? "is-standalone" : ""} ${data.dimmed ? "is-dimmed" : ""} ${selected ? "is-selected" : ""}`}>
+      <Handle id="out" type="source" position={Position.Right} style={hidden} />
+      <Handle id="in" type="target" position={Position.Left} style={hidden} />
       <div className="stack-head">
         <span className="stack-icon" aria-hidden>
           {data.standalone ? "▢" : "▤"}

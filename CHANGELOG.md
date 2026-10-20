@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- **Calmer map.** New default "Links: overview": one line per pair of stacks on a host and one per pair of servers, with ports merged ("· 3 links"). Lines inside a stack and Compose dependencies appear when you select something. Moving dashes only on the selection. The previous behaviour is "Links: every connection".
+- **Fix:** "Is local" could be ticked on agent hosts in the Django admin, which made the hub write its own host's containers into one of them (a duplicate server on the map). The field is now read-only, the hub only writes to its own record, and upgrading resets the flag on agent hosts.
+
 ## 0.3.0
 
 - **Who talks to whom.** Dashed arrows for Compose `depends_on`. With `SERVCHART_OBSERVE_CONNECTIONS=1` and `--pid host`, solid arrows show live TCP traffic between containers, labeled with the port. Traffic to another server running an agent is drawn host-to-host in orange, and host processes such as a host-installed nginx are included. Only private destinations are reported.

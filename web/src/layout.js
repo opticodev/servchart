@@ -228,8 +228,12 @@ export const LINK_KINDS = {
   relation: new Set(["depends", "flow"]), // how containers talk
 };
 
-// Which edges to draw. mode: "smart" (relations always, structure only around the selection),
-// "all", or "selected" (only edges touching the selection).
+// Which edges to draw. mode:
+//   "overview" (default): one line per stack pair on a host and one per host pair across hosts,
+//              with ports merged; lines inside a stack and Compose dependencies only around
+//              the selection. Selecting anything expands its own lines in full.
+//   "smart":   every traffic and dependency line, structure lines only around the selection.
+//   "all":     everything.  "selected": only lines touching the selection.
 export function filterEdges(edges, nodes, mode, selectedId) {
   const parentOf = new Map(nodes.map((n) => [n.id, n.parentId]));
   const touches = (id) => {
@@ -237,10 +241,60 @@ export function filterEdges(edges, nodes, mode, selectedId) {
     for (let cur = id; cur; cur = parentOf.get(cur)) if (cur === selectedId) return true; // inside a selected stack/host
     return false;
   };
-  return edges.filter((e) => {
+  const ancestor = (id, prefix) => {
+    for (let cur = id; cur; cur = parentOf.get(cur)) if (cur.startsWith(prefix)) return cur;
+    return null;
+  };
+
+  if (mode !== "overview") {
+    return edges.filter((e) => {
+      const related = touches(e.source) || touches(e.target);
+      if (mode === "all") return true;
+      if (mode === "selected") return related;
+      return LINK_KINDS.relation.has(e.data.kind) || related;
+    });
+  }
+
+  const out = [];
+  const merged = new Map();
+  for (const e of edges) {
+    const kind = e.data.kind;
     const related = touches(e.source) || touches(e.target);
-    if (mode === "all") return true;
-    if (mode === "selected") return related;
-    return LINK_KINDS.relation.has(e.data.kind) || related;
-  });
+    if (related) {
+      out.push(e);
+      continue;
+    }
+    if (kind !== "flow") continue; // structure and depends_on: only around the selection
+    const sHost = ancestor(e.source, "host:");
+    const tHost = ancestor(e.target, "host:");
+    let a;
+    let b;
+    if (sHost !== tHost) {
+      a = sHost;
+      b = tHost;
+    } else {
+      a = ancestor(e.source, "stack:") || e.source;
+      b = ancestor(e.target, "stack:") || e.target;
+      if (a === b) continue; // inside one stack: shown when the stack or a member is selected
+    }
+    if (!a || !b) continue;
+    const key = `${a}->${b}`;
+    const m = merged.get(key) || { ports: new Set(), count: 0, links: 0, cross_host: sHost !== tHost };
+    (e.data.ports || []).forEach((p) => m.ports.add(p));
+    m.count += e.data.count || 0;
+    m.links += 1;
+    merged.set(key, m);
+  }
+  for (const [key, m] of merged) {
+    const [source, target] = key.split("->");
+    out.push({
+      id: `agg:${key}`,
+      source,
+      target,
+      type: "default",
+      className: "edge-flow edge-agg",
+      data: { kind: "flow", ports: [...m.ports].sort((x, y) => x - y), count: m.count, links: m.links, cross_host: m.cross_host, aggregated: true },
+    });
+  }
+  return out;
 }

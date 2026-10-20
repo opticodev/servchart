@@ -48,6 +48,12 @@ function applyBranding(b) {
   }
 }
 
+function portLabel(d) {
+  const ports = d.ports || [];
+  const shown = ports.slice(0, 3).map((p) => ":" + p).join(" ") + (ports.length > 3 ? ` +${ports.length - 3}` : "");
+  return d.aggregated && d.links > 1 ? `${shown} · ${d.links} links` : shown;
+}
+
 function closeMenu(e) {
   const d = e.currentTarget.closest("details");
   if (d) d.open = false;
@@ -61,7 +67,7 @@ function MapView() {
   const [hostFilter, setHostFilter] = useStored("servchart.hostFilter", "all");
   const [hideStopped, setHideStopped] = useStored("servchart.hideStopped", false);
   const [groupStacks, setGroupStacks] = useStored("servchart.groupStacks", true);
-  const [linkMode, setLinkMode] = useStored("servchart.links", "smart");
+  const [linkMode, setLinkMode] = useStored("servchart.linkMode", "overview");
   const [selectedId, setSelectedId] = useState(null);
   const [dialog, setDialog] = useState(null); // {mode:'add'} | {mode:'rotate', host}
   const [view, setView] = useState(() => (window.location.hash === "#settings" ? "settings" : "map"));
@@ -132,8 +138,8 @@ function MapView() {
           className: cls,
           sourceHandle: "out",
           targetHandle: "in",
-          animated: true,
-          label: d.ports.map((p) => ":" + p).join(" "),
+          animated: !!active, // moving dashes only on the selection's lines
+          label: portLabel(d),
           labelShowBg: true,
           labelBgPadding: [4, 2],
           labelBgBorderRadius: 4,
@@ -180,7 +186,8 @@ function MapView() {
             ))}
           </select>
           <select value={linkMode} onChange={(e) => setLinkMode(e.target.value)} aria-label="Links" title="Which lines to draw">
-            <option value="smart">Links: traffic &amp; dependencies</option>
+            <option value="overview">Links: overview</option>
+            <option value="smart">Links: every connection</option>
             <option value="all">Links: everything</option>
             <option value="selected">Links: selection only</option>
           </select>
@@ -260,7 +267,7 @@ function MapView() {
             <MiniMap pannable zoomable nodeStrokeWidth={2} />
           </ReactFlow>
         )}
-        {graph && hosts.length > 0 && <Legend hosts={hosts} />}
+        {graph && hosts.length > 0 && <Legend hosts={hosts} linkMode={linkMode} />}
         {view === "settings" && me && (
           <Settings
             key={settingsRev}

@@ -8,7 +8,7 @@ class HostAdmin(admin.ModelAdmin):
     list_display = ("name", "status", "is_local", "enabled", "agent_version", "last_seen", "token_hint")
     list_filter = ("enabled", "is_local")
     search_fields = ("name",)
-    readonly_fields = ("token_hint", "created_at", "last_seen", "agent_version", "snapshot")
+    readonly_fields = ("is_local", "token_hint", "created_at", "last_seen", "agent_version", "snapshot")
     fields = ("name", "enabled", "is_local", "token_hint", "agent_version", "created_at", "last_seen", "snapshot")
 
     def has_add_permission(self, request):

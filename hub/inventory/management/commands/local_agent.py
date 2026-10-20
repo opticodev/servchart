@@ -35,7 +35,8 @@ class Command(BaseCommand):
             try:
                 snap = clean_report(collect(client))
                 name = os.environ.get("SERVCHART_LOCAL_NAME") or snap["host"].get("hostname") or "local"
-                host = Host.objects.filter(is_local=True).first()
+                # the record this collector created (token_hint "local"), never an agent host
+                host = Host.objects.filter(is_local=True, token_hint="local").order_by("pk").first()
                 if host is None:
                     # Local host never authenticates with a token; store an unusable random hash.
                     host = Host.objects.create(
