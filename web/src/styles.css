@@ -310,8 +310,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .react-flow__edge:hover .react-flow__edge-path { stroke-width: 3; }
 /* focus: outgoing / incoming lines of the hovered or selected item, others fade */
 .react-flow__edge.is-faded { opacity: 0.12; }
-.react-flow__edge.is-out .react-flow__edge-path { stroke: var(--accent); stroke-width: 2.6; }
-.react-flow__edge.is-in .react-flow__edge-path { stroke: var(--ok); stroke-width: 2.6; }
+/* also beat the cross-server colour, so the focus colours win on every line */
+.react-flow__edge.is-out .react-flow__edge-path,
+.react-flow__edge.edge-flow.edge-cross.is-out .react-flow__edge-path { stroke: var(--accent); stroke-width: 2.6; }
+.react-flow__edge.is-in .react-flow__edge-path,
+.react-flow__edge.edge-flow.edge-cross.is-in .react-flow__edge-path { stroke: var(--ok); stroke-width: 2.6; }
 .react-flow__edge.is-hovered .react-flow__edge-path { stroke-width: 3.2; }
 .react-flow__edge.is-hovered .react-flow__edge-text { font-weight: 700; }
 .react-flow__edges, .react-flow__edge { transition: opacity 0.12s; }

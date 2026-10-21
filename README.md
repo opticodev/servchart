@@ -6,7 +6,48 @@ ServChart draws a live, zoomable map of every Docker host you run: the hosts, th
 
 *ServChart by [OptiCoDev](https://github.com/opticodev).*
 
-> **Status: early (v0.3).** Hosts, stacks, networks, containers, ports and health are mapped, along with who talks to whom, on one host and across hosts. Reverse-proxy routes are next (see [Roadmap](#roadmap)).
+![ServChart map: three servers, their stacks and containers, with traffic lines routed between them; pointing at a container highlights what it calls in blue and what calls it in green](docs/images/demo.gif)
+
+<sub>The fictional demo hosts that ship with ServChart (`SERVCHART_DEMO=1`).</sub>
+
+> **Status: v0.4, early but in daily use.** Hosts, stacks, networks, containers, ports and who talks to whom (on one host and across hosts), plus server health, backups, certificate and image-update checks, and reports. Reverse-proxy routes are next (see [Roadmap](#roadmap)). Feedback from setups we can't test (Unraid, Synology, TrueNAS, Podman, Raspberry Pi) is very welcome.
+
+## Why ServChart
+
+After a few years of self-hosting, nobody remembers which container runs on which box, which stack talks to which database, or whether last night's backup ran. ServChart answers those questions from the servers themselves instead of from a wiki page that's always out of date:
+
+- **What runs where.** Every host, Compose stack (and the folder it lives in), network, container and published port, on one zoomable map.
+- **Who talks to whom.** Lines come from real traffic seen on each host, not from config files, so they show the connections that actually happen, including between servers. Point at a container to see what it calls (blue) and what calls it (green).
+- **Is it healthy, backed up and up to date?** CPU, memory and disk per server, per-container resources, backup status from any backup tool, certificate expiry, and newer image versions, in one place and in a printable report.
+- **Small and outbound only.** One read-only agent per host that connects out to the hub. No ports to open, works behind NAT and on cloud VMs.
+
+<p align="center">
+  <img src="docs/images/focus.png" width="49%" alt="Pointing at a container: its outgoing lines turn blue, incoming lines green, the rest fade">
+  <img src="docs/images/details.png" width="49%" alt="A server's details: CPU, memory, disks, backups and its containers">
+</p>
+
+### What it isn't
+
+ServChart is a **map and audit**. It works alongside the tools you already use rather than replacing them:
+
+| You want to… | Use | ServChart adds |
+|---|---|---|
+| Start, stop and deploy containers | Portainer, Dockge, Komodo | Where everything runs and how it connects, across all hosts |
+| A start page with links to your apps | Homepage, Homarr | The real topology behind the links |
+| Detailed metrics and alerting | Beszel, Netdata, Prometheus + Grafana | A health summary on the map, 24 h history, findings in a report |
+| Follow logs live | Dozzle | Recent logs of any container, from the map (opt-in, admin only) |
+| Get notified about image updates | What's Up Docker, Diun | Update status next to each container, in context |
+
+### Safe by design
+
+ServChart sits next to the Docker socket on your servers, so it's built to be boring from a security point of view:
+
+- **The agent only reads.** It sends `GET` requests to the Docker API and never changes anything.
+- **Outbound only.** Hosts don't open ports; the agent pushes to the hub over HTTPS with its own token, stored only as a hash.
+- **Privacy first.** Environment variables and container commands are never read, secret-looking label values are redacted, and the hub re-checks every report against an allow-list, so a modified agent can't store more.
+- **Opt-in for anything sensitive.** Traffic observation and log viewing are off until you turn them on; logs are admin-only, audited and never stored.
+
+Details in [Privacy & security](#privacy--security) and [SECURITY.md](SECURITY.md).
 
 ## Quick start
 

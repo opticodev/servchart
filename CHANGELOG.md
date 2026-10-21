@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** on a fresh visit the map could stay zoomed in on the first server instead of fitting everything on screen; it now fits once the cards have been measured.
+- **Fix:** pointing at a container didn't recolour its lines to other servers (they stayed orange); they now turn blue (calls) and green (called by) like the others.
+- README: animated demo and screenshots (from the fictional demo hosts), "Why ServChart", how it compares with tools you may already use, and a short security summary.
+
 ## 0.4.1
 
 - **Angled lines.** Connections are drawn with horizontal and vertical segments and rounded corners instead of curves. Switch back with **Lines: curved** in the legend.

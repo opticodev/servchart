@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow } from "@xyflow/react";
+import { Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, useNodesInitialized, useReactFlow } from "@xyflow/react";
 import { api } from "./api.js";
 import { filterEdges, layoutGraph, relatedTo } from "./layout.js";
 import { routeEdges } from "./routing.js";
@@ -115,12 +115,15 @@ function MapView() {
     setNodes(laid.nodes.map((n) => (dragged.current[n.id] ? { ...n, position: dragged.current[n.id] } : n)).map((n) => ({ ...n, selected: n.id === selectedId })));
   }, [laid, selectedId]);
 
+  // fit the map once its cards have been measured; fitting earlier is a no-op and leaves a fresh
+  // visit zoomed in on the first server
+  const nodesReady = useNodesInitialized();
   useEffect(() => {
-    if (!fitted.current && laid.nodes.length) {
+    if (!fitted.current && nodesReady && laid.nodes.length) {
       fitted.current = true;
       requestAnimationFrame(() => fitView({ padding: 0.08 }));
     }
-  }, [laid, fitView]);
+  }, [laid, nodesReady, fitView]);
 
   useEffect(() => {
     fitted.current = false; // refit when the host filter or grouping changes
