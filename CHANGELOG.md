@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
 - **Fix:** on a fresh visit the map could stay zoomed in on the first server instead of fitting everything on screen; it now fits once the cards have been measured.
 - **Fix:** pointing at a container didn't recolour its lines to other servers (they stayed orange); they now turn blue (calls) and green (called by) like the others.
