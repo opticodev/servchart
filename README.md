@@ -88,6 +88,10 @@ No Docker for the agent? It's also on PyPI: `pipx install servchart-agent`, then
 
 Containers started by Docker Compose (including Portainer and Dockge stacks) are grouped into a box per stack. The box shows the stack's folder, and clicking it lists its compose files and the state of each service. Everything else goes in a **Standalone containers** box. Turn grouping off with **Group by stack** in the toolbar. ServChart reads this from the labels Compose puts on every container, so it never needs access to your compose files.
 
+### Hiding containers
+
+Add the label `servchart.ignore: "true"` to a container (or to its Compose service labels), then recreate the container. The agent excludes it from inventory, resource collection and the map. The label value is case-insensitive; other containers remain visible.
+
 ## Who talks to whom
 
 ServChart draws two kinds of lines between containers:

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Container visibility:** An agent skips containers labeled `servchart.ignore=true` (case-insensitive), keeping temporary jobs off the map.
 - **Search navigation:** Press Enter in the search box to focus the next matching container on the map, wrapping back to the first result.
 - **Security:** upgraded the web build tooling to Vite 8 (and `@vitejs/plugin-react` 6) to fix dev-server advisories. Building the web UI from source now needs Node 20.19+ or 22.12+. No change for the published images.
 

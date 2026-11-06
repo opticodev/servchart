@@ -90,6 +90,30 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(rec["compose"]["config_files"], [])
         self.assertEqual(rec["compose"]["project"], "vault")
 
+    def test_ignored_container_label(self):
+        class LabeledClient(FakeClient):
+            def __init__(self, label):
+                self.label = label
+
+            def containers(self):
+                return [{"Id": "temporary-container"}, {"Id": INSPECT["Id"]}]
+
+            def inspect_container(self, cid):
+                if cid == INSPECT["Id"]:
+                    return INSPECT
+                doc = json.loads(json.dumps(INSPECT))
+                doc["Id"] = cid
+                doc["Name"] = "/temporary-job"
+                doc["Config"]["Labels"]["servchart.ignore"] = self.label
+                return doc
+
+        for label in ("true", "TRUE", "TrUe", " true "):
+            with self.subTest(label=label):
+                snapshot = collect(LabeledClient(label))
+                self.assertEqual([c["name"] for c in snapshot["containers"]], ["vaultwarden"])
+        snapshot = collect(LabeledClient("false"))
+        self.assertEqual([c["name"] for c in snapshot["containers"]], ["temporary-job", "vaultwarden"])
+
     def test_snapshot_header(self):
         snap = collect(FakeClient(), hostname="override")
         self.assertEqual(snap["schema"], 1)
