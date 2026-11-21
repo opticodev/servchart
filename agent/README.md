@@ -28,6 +28,10 @@ servchart-agent --stdout            # print what would be sent, send nothing
 
 Get the token from the hub: **+ Add host** in the map.
 
+## Hiding containers
+
+Add `servchart.ignore: "true"` to a container or Compose service and recreate the container. The agent leaves it out of the inventory and map. Label values are case-insensitive.
+
 ## What it sends
 
 It sends container names, images, state and health, networks and IPs, published ports, mounts, restart policy, and Compose stack details (project, service, folder, compose files). It **never** sends environment variables or container commands, and secret-looking label values are redacted. Set `SERVCHART_HIDE_PATHS=1` to also drop host paths and stack folders.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Container visibility:** An agent skips containers labeled `servchart.ignore=true` (case-insensitive), keeping temporary jobs off the map.
 - **CI:** Run agent Python 3.9 tests on Ubuntu 24.04, where the required Python version is available.
 
 - **Search navigation:** Press Enter in the search box to focus the next matching container on the map, wrapping back to the first result.

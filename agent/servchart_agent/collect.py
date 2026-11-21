@@ -188,7 +188,11 @@ def collect(client: DockerClient | None = None, hostname: str | None = None) -> 
     inspected = []
     for summary in client.containers():
         try:
-            inspected.append(client.inspect_container(summary["Id"]))
+            doc = client.inspect_container(summary["Id"])
+            labels = (doc.get("Config") or {}).get("Labels") or {}
+            if str(labels.get("servchart.ignore", "")).strip().lower() == "true":
+                continue
+            inspected.append(doc)
         except Exception:  # container vanished between list and inspect
             continue
     containers = [container_record(i, hide_paths) for i in inspected]
